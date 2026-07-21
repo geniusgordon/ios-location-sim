@@ -160,7 +160,7 @@ def test_distance_m_is_cumulative_not_wrapped():
     for _ in range(600):
         w.advance(1.0)
     assert w.distance_m == pytest.approx(780.0, rel=1e-6)
-    assert w.laps >= 5
+    assert w.laps >= 3
 
 
 def test_open_path_loop_retraces_instead_of_teleporting():
@@ -175,17 +175,59 @@ def test_open_path_loop_retraces_instead_of_teleporting():
         assert abs(b - a) < 0.0001, "no positional jump at the turnaround"
 
 
-def test_closed_loop_wraps_without_reversing():
-    # A genuinely closed route wraps seamlessly by modulo, with no bounce.
+def test_closed_loop_wraps_by_modulo_not_bounce():
     path = Path([(0.0, 0.0), (0.001, 0.0), (0.001, 0.001), (0.0, 0.0)])
     assert path.is_closed_loop
     profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
     w = Walker(path, profile, loop=True, rng=random.Random(0), scatter_m=0.0)
-    prev = None
-    for _ in range(500):
-        fix = w.advance(1.0)
-        cur = (fix.lat, fix.lon)
-        if prev is not None:
-            assert haversine_m(prev, cur) <= MAX_SPEED_MPS + 1e-6
-        prev = cur
+    folded = []
+    for _ in range(800):
+        w.advance(1.0)
+        folded.append(w.distance_m % path.length_m)
+    # Modulo wrapping steps backwards exactly once per lap; a bounce would step
+    # backwards for half of every cycle.
+    decreases = sum(1 for a, b in zip(folded, folded[1:]) if b < a)
+    assert decreases <= w.laps + 1, "position reversed - looks like bounce, not modulo"
     assert w.laps >= 1
+
+
+def test_large_dt_still_credits_distance():
+    # A single very large tick must not be swallowed whole by one sampled pause.
+    # The old linear pause model made p > 1 for dt=3600 and credited zero metres.
+    for seed in range(20):
+        w = Walker(straight_path(1.0), WALK, loop=True, rng=random.Random(seed), scatter_m=0.0)
+        w.advance(3600.0)
+        # An hour at ~1.3 m/s is ~4.7 km; even with a long pause it must be most of that.
+        assert w.distance_m > 4000.0, f"seed {seed}: only {w.distance_m:.0f} m credited"
+
+
+def test_large_dt_matches_many_small_ticks():
+    # Distance over one 600 s tick should be close to 600 one-second ticks.
+    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
+    big = Walker(straight_path(1.0), profile, loop=True, rng=random.Random(0), scatter_m=0.0)
+    small = Walker(straight_path(1.0), profile, loop=True, rng=random.Random(0), scatter_m=0.0)
+    big.advance(600.0)
+    for _ in range(600):
+        small.advance(1.0)
+    assert big.distance_m == pytest.approx(small.distance_m, rel=1e-6)
+
+
+def test_speed_is_zero_once_finished():
+    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
+    w = Walker(straight_path(0.0005), profile, loop=False, rng=random.Random(0), scatter_m=0.0)
+    for _ in range(200):
+        w.advance(1.0)
+    assert w.finished
+    fix = w.advance(1.0)
+    assert fix.speed_mps == 0.0
+    assert fix.distance_m == pytest.approx(w.path.length_m)
+
+
+def test_round_trip_on_open_path_counts_as_one_lap():
+    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
+    path = straight_path(0.001)
+    w = Walker(path, profile, loop=True, rng=random.Random(0), scatter_m=0.0)
+    # Walk exactly two path lengths: out and back.
+    while w.distance_m < 2 * path.length_m:
+        w.advance(1.0)
+    assert w.laps == 1

@@ -72,7 +72,7 @@ class Walker:
         """Advance the simulation by `dt` seconds and return the position to emit."""
         self.elapsed_s += dt
 
-        speed = self._tick_speed(dt)
+        speed = 0.0 if self.finished else self._tick_speed(dt)
         if speed > 0.0 and not self.finished:
             self.distance_m += speed * dt
             self._apply_bounds()
@@ -90,19 +90,42 @@ class Walker:
     # -- internals -------------------------------------------------------
 
     def _tick_speed(self, dt: float) -> float:
-        if self._pause_remaining_s > 0.0:
-            self._pause_remaining_s = max(0.0, self._pause_remaining_s - dt)
-            return 0.0
+        """
+        Effective average speed across this tick, in m/s.
 
-        if self._rng.random() < self.profile.pause_per_min * dt / 60.0:
-            self._pause_remaining_s = self._rng.uniform(
-                self.profile.pause_min_s, self.profile.pause_max_s
-            )
+        Returns an average rather than an instantaneous value so a tick only
+        partly consumed by a pause still credits the walking portion. At the
+        normal 1 Hz tick a pause always spans the whole tick, so this reduces to
+        either 0.0 or the jittered speed; the distinction only matters for an
+        unusually large `dt`.
+        """
+        moving_s = dt
+
+        # Consume any pause already in progress.
+        if self._pause_remaining_s > 0.0:
+            paused = min(self._pause_remaining_s, moving_s)
+            self._pause_remaining_s -= paused
+            moving_s -= paused
+
+        if moving_s > 0.0:
+            # Poisson arrival: probability of at least one pause beginning during
+            # `moving_s`. The previous linear form (rate * dt) exceeds 1.0 for a
+            # large dt and forced a pause on every such tick, discarding the
+            # whole interval's distance.
+            rate_per_s = self.profile.pause_per_min / 60.0
+            if self._rng.random() < 1.0 - math.exp(-rate_per_s * moving_s):
+                pause = self._rng.uniform(self.profile.pause_min_s, self.profile.pause_max_s)
+                consumed = min(pause, moving_s)
+                self._pause_remaining_s = pause - consumed
+                moving_s -= consumed
+
+        if moving_s <= 0.0:
             return 0.0
 
         speed = self.profile.speed * self._rng.gauss(1.0, self.profile.jitter)
         # Clamp against the ceiling using the *jittered* value, not the base.
-        return min(max(speed, 0.0), MAX_SPEED_MPS)
+        speed = min(max(speed, 0.0), MAX_SPEED_MPS)
+        return speed * (moving_s / dt)
 
     def _apply_bounds(self) -> None:
         length = self.path.length_m
@@ -111,7 +134,10 @@ class Walker:
             # or reset — that is what lets a long walk keep accumulating past
             # any number of laps. Only the derived position (see
             # `_position_distance`) folds it back onto the path.
-            self.laps = int(self.distance_m // length)
+            lengths = self.distance_m / length
+            # On a bouncing open route a lap is a full out-and-back, i.e. two path
+            # lengths; on a closed route one length is one lap.
+            self.laps = int(lengths) if self.path.is_closed_loop else int(lengths / 2)
         elif self.distance_m >= length:
             self.distance_m = length
             self.finished = True
