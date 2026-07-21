@@ -167,3 +167,39 @@ def test_all_repeated_junction_points_are_stripped(tmp_path):
     assert path.coords == pytest.approx([(25.032958, 121.565417), (25.032955, 121.565542)])
     consecutive_dupes = [a for a, b in zip(path.coords, path.coords[1:]) if a == b]
     assert consecutive_dupes == []
+
+
+def test_unwritable_cache_dir_does_not_lose_the_route(tmp_path):
+    # Caching is an optimisation; failing to cache must not discard a good route.
+    import os
+    import stat
+
+    ro_dir = tmp_path / "readonly"
+    ro_dir.mkdir()
+    os.chmod(ro_dir, stat.S_IREAD | stat.S_IEXEC)
+    try:
+        client = ValhallaClient(cache_dir=ro_dir, poster=FakePoster())
+        path = client.route(WAYPOINTS, costing="pedestrian")
+        assert path.length_m >= 0
+        assert len(path.coords) >= 2
+    finally:
+        os.chmod(ro_dir, stat.S_IRWXU)
+
+
+def test_wrong_typed_cache_payload_is_discarded_and_refetched(tmp_path):
+    poster = FakePoster()
+    client = ValhallaClient(cache_dir=tmp_path, poster=poster)
+    client.route(WAYPOINTS, costing="pedestrian")
+    # Valid JSON, wrong shape — must be treated as corrupt, not crash on .get()
+    next(tmp_path.glob("*.json")).write_text("[1, 2, 3]")
+    path = client.route(WAYPOINTS, costing="pedestrian")
+    assert len(path.coords) >= 2
+    assert len(poster.calls) == 2, "wrong-typed cache entry should force a refetch"
+
+
+def test_wrong_typed_cache_payload_offline_raises_route_not_cached(tmp_path):
+    ValhallaClient(cache_dir=tmp_path, poster=FakePoster()).route(WAYPOINTS, costing="pedestrian")
+    next(tmp_path.glob("*.json")).write_text('"just a string"')
+    offline = ValhallaClient(cache_dir=tmp_path, offline=True)
+    with pytest.raises(RouteNotCached):
+        offline.route(WAYPOINTS, costing="pedestrian")

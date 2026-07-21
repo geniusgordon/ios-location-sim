@@ -136,7 +136,10 @@ class ValhallaClient:
         if not cache_file.exists():
             return None
         try:
-            return json.loads(cache_file.read_text())
+            payload = json.loads(cache_file.read_text())
+            if not isinstance(payload, dict):
+                raise json.JSONDecodeError("cached payload is not a JSON object", "", 0)
+            return payload
         except (OSError, json.JSONDecodeError) as exc:
             logger.warning("discarding unreadable cache entry %s: %s", cache_file, exc)
             if self.offline:
@@ -147,15 +150,30 @@ class ValhallaClient:
             return None
 
     def _write_cache(self, cache_file: pathlib.Path, payload: dict) -> None:
-        """Write atomically, so a process killed mid-write leaves no partial entry."""
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=self.cache_dir, suffix=".tmp")
+        """
+        Write atomically, so a process killed mid-write leaves no partial entry.
+
+        A failed cache write is logged and ignored: the route has already been
+        fetched and decoded successfully, so losing it because the cache is
+        unwritable would trade a working result for a crash.
+        """
+        tmp: str | None = None
         try:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=self.cache_dir, suffix=".tmp")
             with os.fdopen(fd, "w") as handle:
                 json.dump(payload, handle)
             os.replace(tmp, cache_file)
+        except OSError as exc:
+            logger.warning("could not cache route to %s: %s", cache_file, exc)
+            if tmp is not None:
+                try:
+                    pathlib.Path(tmp).unlink(missing_ok=True)
+                except OSError:
+                    pass
         except BaseException:
-            pathlib.Path(tmp).unlink(missing_ok=True)
+            if tmp is not None:
+                pathlib.Path(tmp).unlink(missing_ok=True)
             raise
 
     def _fetch(self, waypoints: list[Coord], costing: str) -> dict:
