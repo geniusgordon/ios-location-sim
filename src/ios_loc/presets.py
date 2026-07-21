@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import pathlib
+import re
 import tomllib
 from dataclasses import dataclass, replace
+
+import tomli_w
 
 from ios_loc.path import Coord
 
@@ -162,3 +166,77 @@ def load_config(
         )
 
     return profiles, presets
+
+
+# A TOML table header's bracketed content is a dotted sequence of bare keys
+# ([A-Za-z0-9_-]+) or quoted keys ("..."/'...'); nothing else is legal there.
+# Requiring that shape (rather than "anything but ']'") matters: a line inside
+# a multi-line array such as the last, comma-less element of
+#     waypoints = [
+#         [25.0, 121.0],
+#         [25.1, 121.1]
+#     ]
+# also looks like "[<content>]" but its content ("25.1, 121.1") contains a
+# comma and a space, which cannot appear in a dotted key — so it correctly
+# fails to match here, whereas a naive "[^\]]+" body would treat it as a table
+# header and prematurely stop dropping a [presets.*] block mid-array. The same
+# tightened grammar also lets a quoted key legitimately contain "]"
+# (`["my]key"]`) without truncating the match early.
+_KEY_SEGMENT = r'(?:[A-Za-z0-9_-]+|"(?:[^"\\]|\\.)*"|\'[^\']*\')'
+_TOP_LEVEL_TABLE_RE = re.compile(
+    rf"^\s*\[\[?\s*({_KEY_SEGMENT}(?:\s*\.\s*{_KEY_SEGMENT})*)\s*\]\]?\s*(?:#.*)?$"
+)
+
+
+def _strip_preset_tables(text: str) -> str:
+    """Return `text` with every [presets.*] table removed, everything else verbatim.
+
+    A table block runs from its header line to the next table header. Only the
+    preset tables are regenerated on save, so a hand-written [profiles.*] section
+    and its comments survive untouched.
+    """
+    kept: list[str] = []
+    dropping = False
+    for line in text.splitlines(keepends=True):
+        match = _TOP_LEVEL_TABLE_RE.match(line)
+        if match is not None:
+            name = match.group(1).strip()
+            dropping = name == "presets" or name.startswith("presets.")
+        if not dropping:
+            kept.append(line)
+    return "".join(kept)
+
+
+def save_preset(path: pathlib.Path | None, preset: Preset) -> None:
+    """Write `preset` into the config file, replacing any preset of the same name.
+
+    Everything outside the [presets.*] tables is preserved byte for byte;
+    comments inside preset tables are not. The write is atomic (temp + rename)
+    so an interrupted save cannot leave a truncated config behind.
+    """
+    path = pathlib.Path(path) if path else DEFAULT_CONFIG_PATH
+    # Validate through the same path the loader uses, before touching the disk.
+    _parse_waypoints([[lat, lon] for lat, lon in preset.waypoints], preset.name)
+
+    existing_text = path.read_text() if path.exists() else ""
+    _, existing = load_config(path) if path.exists() else ({}, {})
+    merged = dict(existing)
+    merged[preset.name] = preset
+
+    tables = {
+        name: {
+            "waypoints": [[lat, lon] for lat, lon in item.waypoints],
+            "profile": item.profile,
+            "loop": item.loop,
+        }
+        for name, item in sorted(merged.items())
+    }
+    rendered = tomli_w.dumps({"presets": tables})
+
+    head = _strip_preset_tables(existing_text).rstrip()
+    body = f"{head}\n\n{rendered}" if head else rendered
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(body)
+    os.replace(tmp, path)
