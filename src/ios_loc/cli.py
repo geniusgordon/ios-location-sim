@@ -196,7 +196,9 @@ def walk(
     # (irrelevant, since it will be rejected regardless) --via value happens to
     # parse.
     if preset and via:
-        _fail(PRESET_AND_WAYPOINTS_CONFLICT)
+        # Name the actual flag the user typed, like we do for other messages.
+        message = PRESET_AND_WAYPOINTS_CONFLICT.replace("waypoints", "--via waypoints")
+        _fail(message)
 
     try:
         parsed_via = [parse_waypoint(v) for v in via] if via else None

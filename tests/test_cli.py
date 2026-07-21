@@ -69,7 +69,7 @@ def test_walk_rejects_preset_and_via_together(tmp_path):
         app, ["walk", "home", "--via", "25.0,121.0", "--config", str(cfg)]
     )
     assert result.exit_code != 0
-    assert result.stdout.strip() == "pass either a preset name or waypoints, not both"
+    assert result.stdout.strip() == "pass either a preset name or --via waypoints, not both"
 
 
 def test_walk_rejects_preset_and_via_together_even_when_via_is_malformed(tmp_path):
@@ -84,7 +84,7 @@ def test_walk_rejects_preset_and_via_together_even_when_via_is_malformed(tmp_pat
         app, ["walk", "home", "--via", "garbage", "--config", str(cfg)]
     )
     assert result.exit_code != 0
-    assert result.stdout.strip() == "pass either a preset name or waypoints, not both"
+    assert result.stdout.strip() == "pass either a preset name or --via waypoints, not both"
 
 
 def test_walk_help_exposes_no_clear_and_no_loop():
