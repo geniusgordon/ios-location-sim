@@ -41,30 +41,15 @@ function channel<T extends (...args: never[]) => void>() {
 export function createWalkStore(): WalkStore {
   let model = initialModel
   let meta = metaOf(model)
-  let previousFixState: string | null = null
 
   const metaChannel = channel<() => void>()
   const telemetryChannel = channel<() => void>()
   const fixChannel = channel<(fix: Fix) => void>()
 
-  function commit(next: WalkModel, fix: Fix | null, isFixMessage: boolean = false): void {
+  function commit(next: WalkModel, fix: Fix | null): void {
     model = next
     const nextMeta = metaOf(next)
-
-    let metaChanged = false
-    if (isFixMessage) {
-      // For fix messages, only notify meta if state changed from previous fix.
-      // The first fix never triggers a meta notification; subsequent fixes do
-      // only if the state differs from the previous fix's state.
-      if (previousFixState !== null && next.state !== previousFixState) {
-        metaChanged = true
-      }
-      previousFixState = next.state
-    } else {
-      // For state messages, check normally using metaEquals.
-      metaChanged = !metaEquals(meta, nextMeta)
-    }
-
+    const metaChanged = !metaEquals(meta, nextMeta)
     // Only swap the object when it really changed, so getMeta() stays stable
     // and useSyncExternalStore bails out instead of re-rendering the map.
     if (metaChanged) meta = nextMeta
@@ -80,13 +65,11 @@ export function createWalkStore(): WalkStore {
     subscribeTelemetry: (l) => telemetryChannel.add(l),
     subscribeFix: (l) => fixChannel.add(l),
     dispatch(msg) {
-      const next = applyMessage(model, msg)
-      commit(next, msg.type === "fix" ? msg.fix : null, msg.type === "fix")
+      commit(applyMessage(model, msg), msg.type === "fix" ? msg.fix : null)
     },
     reset(next) {
       model = next
       meta = metaOf(next)
-      previousFixState = null
       telemetryChannel.emit()
       metaChannel.emit()
     },

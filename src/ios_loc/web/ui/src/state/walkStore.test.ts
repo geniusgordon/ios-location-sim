@@ -13,6 +13,7 @@ describe("notification channels", () => {
     const store = createWalkStore()
     const meta = vi.fn()
     const telemetry = vi.fn()
+    store.dispatch({ type: "state", state: "walking", error: null })
     store.subscribeMeta(meta)
     store.subscribeTelemetry(telemetry)
 
@@ -35,10 +36,24 @@ describe("notification channels", () => {
   it("notifies meta when a fix message also carries a new state", () => {
     const store = createWalkStore()
     const meta = vi.fn()
+    store.dispatch({ type: "state", state: "walking", error: null })
     store.subscribeMeta(meta)
     store.dispatch({ type: "fix", fix: fix(1), stats, state: "walking" })
     store.dispatch({ type: "fix", fix: fix(2), stats, state: "reconnecting" })
     expect(meta).toHaveBeenCalledTimes(1)
+  })
+
+  it("notifies meta when a fix carries the first state transition out of idle", () => {
+    const store = createWalkStore()
+    const meta = vi.fn()
+    store.subscribeMeta(meta)
+    // idle -> walking IS a meta change, even though it arrived on a fix
+    // message. getMeta() must not keep reporting idle while getModel() says
+    // walking -- Task 9 gates the route-editor lock on meta.state.
+    store.dispatch({ type: "fix", fix: fix(1), stats, state: "walking" })
+    expect(meta).toHaveBeenCalledTimes(1)
+    expect(store.getMeta().state).toBe("walking")
+    expect(store.getModel().state).toBe("walking")
   })
 
   it("hands fixes to fix subscribers, and only fixes", () => {
@@ -64,6 +79,7 @@ describe("notification channels", () => {
 describe("snapshot identity", () => {
   it("keeps getMeta() referentially stable across fixes, so useSyncExternalStore bails out", () => {
     const store = createWalkStore()
+    store.dispatch({ type: "state", state: "walking", error: null })
     const before = store.getMeta()
     store.dispatch({ type: "fix", fix: fix(1), stats, state: "walking" })
     expect(store.getMeta()).toBe(before)
