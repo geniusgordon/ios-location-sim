@@ -19,6 +19,7 @@ dev = [
     "httpx>=0.28.1",
     "pytest>=8",
     "pytest-asyncio>=0.24",
+    "pytest-timeout>=2.4.0",
 ]
 
 [build-system]
@@ -31,3 +32,6 @@ packages = ["src/ios_loc"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Global timeout to catch regressions where _broadcast() blocks or spin-waits,
+# which would otherwise hang the test suite indefinitely instead of failing loudly.
+timeout = 60
