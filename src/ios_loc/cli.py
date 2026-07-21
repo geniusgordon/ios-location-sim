@@ -19,7 +19,6 @@ from ios_loc.presets import (
     ConfigError,
     NEEDS_PRESET_OR_WAYPOINTS,
     NEEDS_TWO_WAYPOINTS,
-    PRESET_AND_WAYPOINTS_CONFLICT,
     _check_coord_range,
     load_config,
     resolve_walk,
@@ -196,9 +195,10 @@ def walk(
     # (irrelevant, since it will be rejected regardless) --via value happens to
     # parse.
     if preset and via:
-        # Name the actual flag the user typed, like we do for other messages.
-        message = PRESET_AND_WAYPOINTS_CONFLICT.replace("waypoints", "--via waypoints")
-        _fail(message)
+        # Spelled out rather than derived from the shared constant: naming the
+        # flag is a CLI concern, and rewriting another module's wording would
+        # break silently if that wording ever changed.
+        _fail("pass either a preset name or --via waypoints, not both")
 
     try:
         parsed_via = [parse_waypoint(v) for v in via] if via else None
