@@ -1,0 +1,681 @@
+{
+  "components": {
+    "schemas": {
+      "FixOut": {
+        "properties": {
+          "distance_m": {
+            "title": "Distance M",
+            "type": "number"
+          },
+          "elapsed_s": {
+            "title": "Elapsed S",
+            "type": "number"
+          },
+          "lat": {
+            "title": "Lat",
+            "type": "number"
+          },
+          "lon": {
+            "title": "Lon",
+            "type": "number"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "speed_mps": {
+            "title": "Speed Mps",
+            "type": "number"
+          }
+        },
+        "required": [
+          "elapsed_s",
+          "lat",
+          "lon",
+          "distance_m",
+          "speed_mps",
+          "paused"
+        ],
+        "title": "FixOut",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "PresetIn": {
+        "properties": {
+          "loop": {
+            "default": false,
+            "title": "Loop",
+            "type": "boolean"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "profile": {
+            "default": "walk",
+            "title": "Profile",
+            "type": "string"
+          },
+          "waypoints": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "minItems": 2,
+            "title": "Waypoints",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "waypoints"
+        ],
+        "title": "PresetIn",
+        "type": "object"
+      },
+      "PresetOut": {
+        "properties": {
+          "loop": {
+            "title": "Loop",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "waypoints": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Waypoints",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "waypoints",
+          "profile",
+          "loop"
+        ],
+        "title": "PresetOut",
+        "type": "object"
+      },
+      "PresetsListOut": {
+        "properties": {
+          "offline": {
+            "title": "Offline",
+            "type": "boolean"
+          },
+          "presets": {
+            "items": {
+              "$ref": "#/components/schemas/PresetOut"
+            },
+            "title": "Presets",
+            "type": "array"
+          },
+          "profiles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Profiles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "presets",
+          "profiles",
+          "offline"
+        ],
+        "title": "PresetsListOut",
+        "type": "object"
+      },
+      "RouteRequest": {
+        "properties": {
+          "costing": {
+            "default": "pedestrian",
+            "title": "Costing",
+            "type": "string"
+          },
+          "waypoints": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "minItems": 2,
+            "title": "Waypoints",
+            "type": "array"
+          }
+        },
+        "required": [
+          "waypoints"
+        ],
+        "title": "RouteRequest",
+        "type": "object"
+      },
+      "RouteResponse": {
+        "properties": {
+          "coords": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Coords",
+            "type": "array"
+          },
+          "is_closed_loop": {
+            "title": "Is Closed Loop",
+            "type": "boolean"
+          },
+          "length_m": {
+            "title": "Length M",
+            "type": "number"
+          }
+        },
+        "required": [
+          "coords",
+          "length_m",
+          "is_closed_loop"
+        ],
+        "title": "RouteResponse",
+        "type": "object"
+      },
+      "StartRequest": {
+        "description": "Either `preset` or `waypoints` \u2014 the API rejects both and neither.",
+        "properties": {
+          "costing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costing"
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "loop": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loop"
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
+          "scatter_m": {
+            "default": 3.0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Scatter M",
+            "type": "number"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed"
+          },
+          "waypoints": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waypoints"
+          }
+        },
+        "title": "StartRequest",
+        "type": "object"
+      },
+      "StatsOut": {
+        "properties": {
+          "distance_m": {
+            "title": "Distance M",
+            "type": "number"
+          },
+          "elapsed_s": {
+            "title": "Elapsed S",
+            "type": "number"
+          },
+          "laps": {
+            "title": "Laps",
+            "type": "integer"
+          },
+          "reconnects": {
+            "title": "Reconnects",
+            "type": "integer"
+          },
+          "ticks": {
+            "title": "Ticks",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "elapsed_s",
+          "distance_m",
+          "laps",
+          "reconnects",
+          "ticks"
+        ],
+        "title": "StatsOut",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "WalkState": {
+        "enum": [
+          "idle",
+          "starting",
+          "walking",
+          "reconnecting",
+          "finished",
+          "error"
+        ],
+        "title": "WalkState",
+        "type": "string"
+      },
+      "WalkStatus": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "fix": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FixOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length M"
+          },
+          "loop": {
+            "default": false,
+            "title": "Loop",
+            "type": "boolean"
+          },
+          "preset_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Name"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
+          "route": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Route",
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/WalkState"
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trail": {
+            "items": {
+              "$ref": "#/components/schemas/FixOut"
+            },
+            "title": "Trail",
+            "type": "array"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "WalkStatus",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "ios-loc",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/presets": {
+      "get": {
+        "operationId": "list_presets_api_presets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetsListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Presets"
+      },
+      "post": {
+        "operationId": "create_preset_api_presets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Preset"
+      }
+    },
+    "/api/route": {
+      "post": {
+        "operationId": "build_route_api_route_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Build Route"
+      }
+    },
+    "/api/walk": {
+      "delete": {
+        "operationId": "stop_walk_api_walk_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalkStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Stop Walk"
+      },
+      "get": {
+        "operationId": "walk_status_api_walk_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalkStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Walk Status"
+      },
+      "post": {
+        "operationId": "start_walk_api_walk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalkStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Walk"
+      }
+    }
+  }
+}

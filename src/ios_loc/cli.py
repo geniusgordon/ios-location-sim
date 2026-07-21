@@ -8,12 +8,21 @@ import pathlib
 import random
 import re
 import sys
+import webbrowser
 
 import typer
+import uvicorn
 
 from ios_loc.discovery import DiscoveryError, find_device, open_simulation
 from ios_loc.path import Coord
-from ios_loc.presets import ConfigError, load_config
+from ios_loc.presets import (
+    ConfigError,
+    NEEDS_PRESET_OR_WAYPOINTS,
+    NEEDS_TWO_WAYPOINTS,
+    _check_coord_range,
+    load_config,
+    resolve_walk,
+)
 from ios_loc.routing import RoutingError, ValhallaClient
 from ios_loc.runner import run_walk
 from ios_loc.session import LocationSession, SessionLost
@@ -38,8 +47,10 @@ def parse_waypoint(text: str) -> Coord:
         lat, lon = float(parts[0].strip()), float(parts[1].strip())
     except ValueError as exc:
         raise ValueError(f"waypoint must be 'lat,lon', got {text!r}") from exc
-    if not -90 <= lat <= 90 or not -180 <= lon <= 180:
-        raise ValueError(f"waypoint out of range: {text!r}")
+    try:
+        _check_coord_range(lat, lon, "waypoint")
+    except ValueError as exc:
+        raise ValueError(f"waypoint out of range: {text!r}") from exc
     return lat, lon
 
 
@@ -179,36 +190,49 @@ def walk(
     except ConfigError as exc:
         _fail(f"config error: {exc}")
 
-    if preset:
-        if via:
-            _fail("pass either a preset name or --via waypoints, not both")
-        if preset not in presets:
-            _fail(f"unknown preset {preset!r}; try: ios-loc presets list")
-        chosen = presets[preset]
-        waypoints = chosen.waypoints
-        profile_name = profile or chosen.profile
-        loop = chosen.loop if loop is None else loop
-    else:
-        if not via or len(via) < 2:
-            _fail("a route needs at least 2 waypoints — pass --via 'lat,lon' twice")
-        try:
-            waypoints = [parse_waypoint(v) for v in via]
-        except ValueError as exc:
-            _fail(str(exc))
-        profile_name = profile or "walk"
-        loop = bool(loop)
+    # Check the preset/--via conflict before parsing --via strings: it is the
+    # more useful message, and reporting it must not depend on whether the
+    # (irrelevant, since it will be rejected regardless) --via value happens to
+    # parse.
+    if preset and via:
+        # Spelled out rather than derived from the shared constant: naming the
+        # flag is a CLI concern, and rewriting another module's wording would
+        # break silently if that wording ever changed.
+        _fail("pass either a preset name or --via waypoints, not both")
 
-    if profile_name not in profiles:
-        _fail(f"unknown profile {profile_name!r}; try: ios-loc presets list")
-    selected = profiles[profile_name]
+    try:
+        parsed_via = [parse_waypoint(v) for v in via] if via else None
+    except ValueError as exc:
+        _fail(str(exc))
 
-    if speed is not None:
-        from dataclasses import replace
+    # `resolve_walk` is shared with the HTTP API, so its "not enough
+    # waypoints" messages are worded generically. The CLI appends its own
+    # actionable hint on top rather than baking CLI-specific phrasing into the
+    # shared resolver.
+    _VIA_HINT = " — pass --via 'lat,lon' twice"
 
-        try:
-            selected = replace(selected, speed=speed)
-        except ValueError as exc:
-            _fail(str(exc))
+    try:
+        resolved = resolve_walk(
+            preset=preset,
+            waypoints=parsed_via,
+            profile=profile,
+            speed=speed,
+            costing=costing,
+            loop=loop,
+            profiles=profiles,
+            presets=presets,
+        )
+    except ConfigError as exc:
+        _fail(f"{exc}; try: ios-loc presets list")
+    except ValueError as exc:
+        message = str(exc)
+        if message in (NEEDS_PRESET_OR_WAYPOINTS, NEEDS_TWO_WAYPOINTS):
+            message += _VIA_HINT
+        _fail(message)
+
+    waypoints = resolved.waypoints
+    selected = resolved.profile
+    loop = resolved.loop
 
     duration_s = None
     if duration:
@@ -228,7 +252,7 @@ def walk(
 
     try:
         client = ValhallaClient(offline=offline)
-        path = client.route(waypoints, costing=costing or selected.costing)
+        path = client.route(waypoints, costing=resolved.costing)
     except (RoutingError, ValueError) as exc:
         _fail(f"routing failed: {exc}")
 
@@ -284,3 +308,50 @@ def walk(
             f"FAILED: {exc}\n"
             "Check the device is unlocked, trusted, and has Developer Mode enabled."
         )
+
+
+DEFAULT_STATIC_DIR = pathlib.Path(__file__).parent / "web" / "static"
+
+
+def build_gui_app(
+    *,
+    config: pathlib.Path | None,
+    offline: bool,
+    udid: str | None,
+    static_dir: pathlib.Path | None = DEFAULT_STATIC_DIR,
+):
+    """Assemble the GUI app. Separated from `gui` so tests need no server."""
+    from ios_loc.web.api import create_app
+    from ios_loc.web.service import WalkService
+
+    route_client = ValhallaClient(offline=offline)
+    service = WalkService(
+        route_client=route_client,
+        session_factory=lambda: LocationSession(lambda: open_simulation(udid)),
+    )
+    return create_app(
+        service=service,
+        route_client=route_client,
+        config_path=config,
+        offline=offline,
+        static_dir=static_dir,
+    )
+
+
+@app.command()
+def gui(
+    host: str = typer.Option("127.0.0.1", help="Bind address. Leave as loopback unless you mean it."),
+    port: int = typer.Option(8765, help="Port to serve on."),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open a browser on start."),
+    offline: bool = typer.Option(False, "--offline", help="Fail routing that is not cached."),
+    udid: str = typer.Option(None, help="Target a specific device UDID."),
+    config: pathlib.Path = typer.Option(None, help="Path to config.toml."),
+) -> None:
+    """Serve the map GUI on localhost."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+    application = build_gui_app(config=config, offline=offline, udid=udid)
+    url = f"http://{host}:{port}"
+    typer.echo(f"serving {url}")
+    if open_browser:
+        webbrowser.open(url)
+    uvicorn.run(application, host=host, port=port, log_level="info")
