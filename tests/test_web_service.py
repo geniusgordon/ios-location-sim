@@ -298,6 +298,49 @@ async def test_a_routing_failure_during_start_resets_to_idle_with_an_error():
     assert service.status().state is WalkState.FINISHED
 
 
+async def test_a_failed_start_broadcasts_the_error():
+    """`start()` sets self._error before raising, but a live WebSocket client
+    only learns about state through `_broadcast`. Before the fix, the failure
+    path returned (via `raise`) before reaching the single `_broadcast` call at
+    the end of `start()`, so a subscribed client never heard about the failed
+    run at all -- only a subsequent `GET /api/walk` would reveal it."""
+    from ios_loc.routing import RoutingError
+
+    route_client = FakeRouteClient(error=RoutingError("valhalla said no"))
+    service, _ = make_service(route_client=route_client)
+
+    with service.subscribe() as queue:
+        with pytest.raises(RoutingError):
+            await service.start(spec())
+        messages = _drain(queue)
+
+    assert messages, "a subscriber must be told a start() failed"
+    last = messages[-1]
+    assert last["type"] == "state"
+    assert last["state"] == WalkState.IDLE.value
+    assert last["error"] is not None
+    assert "valhalla said no" in last["error"]
+
+
+async def test_stop_clears_a_lingering_error_with_no_run():
+    """A failed start() leaves self._error set with self._run at None. Before
+    the fix, `stop()` returned immediately when `run is None`, so the only way
+    to clear that error was a later *successful* start() -- `DELETE /api/walk`
+    could not dismiss it, leaving a GUI stuck showing a stale failure."""
+    from ios_loc.routing import RoutingError
+
+    route_client = FakeRouteClient(error=RoutingError("valhalla said no"))
+    service, _ = make_service(route_client=route_client)
+
+    with pytest.raises(RoutingError):
+        await service.start(spec())
+    assert service.status().error is not None
+
+    await service.stop()
+    assert service.status().error is None
+    assert service.status().state is WalkState.IDLE
+
+
 async def test_device_lost_is_reported_as_an_error_not_a_clean_finish():
     session = FakeSession(fail_with=SessionLost("device unreachable"), fail_on=3)
     service, _ = make_service(session=session)

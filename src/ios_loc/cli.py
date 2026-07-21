@@ -15,7 +15,15 @@ import uvicorn
 
 from ios_loc.discovery import DiscoveryError, find_device, open_simulation
 from ios_loc.path import Coord
-from ios_loc.presets import ConfigError, load_config, resolve_walk
+from ios_loc.presets import (
+    ConfigError,
+    NEEDS_PRESET_OR_WAYPOINTS,
+    NEEDS_TWO_WAYPOINTS,
+    PRESET_AND_WAYPOINTS_CONFLICT,
+    _check_coord_range,
+    load_config,
+    resolve_walk,
+)
 from ios_loc.routing import RoutingError, ValhallaClient
 from ios_loc.runner import run_walk
 from ios_loc.session import LocationSession, SessionLost
@@ -40,8 +48,10 @@ def parse_waypoint(text: str) -> Coord:
         lat, lon = float(parts[0].strip()), float(parts[1].strip())
     except ValueError as exc:
         raise ValueError(f"waypoint must be 'lat,lon', got {text!r}") from exc
-    if not -90 <= lat <= 90 or not -180 <= lon <= 180:
-        raise ValueError(f"waypoint out of range: {text!r}")
+    try:
+        _check_coord_range(lat, lon, "waypoint")
+    except ValueError as exc:
+        raise ValueError(f"waypoint out of range: {text!r}") from exc
     return lat, lon
 
 
@@ -181,10 +191,23 @@ def walk(
     except ConfigError as exc:
         _fail(f"config error: {exc}")
 
+    # Check the preset/--via conflict before parsing --via strings: it is the
+    # more useful message, and reporting it must not depend on whether the
+    # (irrelevant, since it will be rejected regardless) --via value happens to
+    # parse.
+    if preset and via:
+        _fail(PRESET_AND_WAYPOINTS_CONFLICT)
+
     try:
         parsed_via = [parse_waypoint(v) for v in via] if via else None
     except ValueError as exc:
         _fail(str(exc))
+
+    # `resolve_walk` is shared with the HTTP API, so its "not enough
+    # waypoints" messages are worded generically. The CLI appends its own
+    # actionable hint on top rather than baking CLI-specific phrasing into the
+    # shared resolver.
+    _VIA_HINT = " — pass --via 'lat,lon' twice"
 
     try:
         resolved = resolve_walk(
@@ -200,7 +223,10 @@ def walk(
     except ConfigError as exc:
         _fail(f"{exc}; try: ios-loc presets list")
     except ValueError as exc:
-        _fail(str(exc))
+        message = str(exc)
+        if message in (NEEDS_PRESET_OR_WAYPOINTS, NEEDS_TWO_WAYPOINTS):
+            message += _VIA_HINT
+        _fail(message)
 
     waypoints = resolved.waypoints
     selected = resolved.profile

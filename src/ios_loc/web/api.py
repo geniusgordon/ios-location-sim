@@ -188,8 +188,16 @@ def create_app(
             except WebSocketDisconnect:
                 return
             finally:
+                # `recv_task` ends one of exactly two ways here: cancelled by
+                # the `recv_task.cancel()` just below, or already finished
+                # with `WebSocketDisconnect` (the client left concurrently
+                # with the `get_task` branch winning `asyncio.wait`, so
+                # `cancel()` on an already-done task is a no-op and awaiting
+                # it re-raises that same disconnect). Both are expected; a
+                # bare `Exception` catch-all is not needed for either and
+                # would mask a real bug surfacing here instead.
                 recv_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, Exception):
+                with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect):
                     await recv_task
 
     if static_dir is not None and static_dir.exists():

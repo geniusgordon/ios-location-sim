@@ -368,8 +368,12 @@ def test_a_disconnected_socket_does_not_stop_the_walk(tmp_path):
             )
             # Close immediately, mid-walk, without draining any fixes.
 
-        # The departed viewer's subscription must not linger.
-        assert service._subscribers == set()
+        # Whether the departed viewer's subscription is actually released is
+        # covered by test_an_idle_departed_socket_is_cleaned_up_even_with_no_walk_running
+        # (this test's own teardown is driven by Starlette's test-session
+        # cancellation, not the handler's own disconnect-detection path, so
+        # asserting `service._subscribers == set()` here would pass even
+        # against an unfixed handler).
 
         # The walk is still running/finishing on the service side, unaffected by
         # the departed viewer; a fresh connection can still see it end cleanly.

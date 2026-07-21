@@ -193,6 +193,9 @@ class WalkService:
                 self._run = None
                 self._state = WalkState.IDLE
                 self._error = f"{type(exc).__name__}: {exc}"
+                self._broadcast(
+                    {"type": "state", "state": self._state.value, "error": self._error}
+                )
                 raise
             self._broadcast({"type": "state", "state": self._state.value, "error": None})
             return self.status()
@@ -201,6 +204,15 @@ class WalkService:
         async with self._lock:
             run = self._run
             if run is None:
+                # Nothing running, but a previous failed start() may have left
+                # self._error set with no run to ever clear it -- DELETE
+                # /api/walk must still be able to dismiss that stale failure.
+                if self._error is not None:
+                    self._state = WalkState.IDLE
+                    self._error = None
+                    self._broadcast(
+                        {"type": "state", "state": self._state.value, "error": None}
+                    )
                 return
             task = run.task
             # Publish the "stopped" state before awaiting anything further, so

@@ -175,6 +175,14 @@ def load_config(
     return profiles, presets
 
 
+# Shared verbatim by `cli.walk` and `POST /api/walk` so a rephrasing here never
+# drifts out of sync between the two callers. The CLI appends its own
+# `--via`-specific hint on top of these; the API leaves them as-is.
+PRESET_AND_WAYPOINTS_CONFLICT = "pass either a preset name or waypoints, not both"
+NEEDS_PRESET_OR_WAYPOINTS = "a walk needs a preset or at least 2 waypoints"
+NEEDS_TWO_WAYPOINTS = "a route needs at least 2 waypoints"
+
+
 @dataclass(frozen=True)
 class ResolvedWalk:
     """The concrete, ready-to-run shape of a walk request."""
@@ -213,9 +221,9 @@ def resolve_walk(
     built, so that check stays with each caller, after it calls this.
     """
     if preset and waypoints:
-        raise ValueError("pass either a preset name or waypoints, not both")
+        raise ValueError(PRESET_AND_WAYPOINTS_CONFLICT)
     if not preset and not waypoints:
-        raise ValueError("a walk needs a preset or at least 2 waypoints")
+        raise ValueError(NEEDS_PRESET_OR_WAYPOINTS)
 
     preset_name = None
     if preset:
@@ -229,7 +237,7 @@ def resolve_walk(
     else:
         assert waypoints is not None  # guaranteed by the guard above
         if len(waypoints) < 2:
-            raise ValueError("a route needs at least 2 waypoints")
+            raise ValueError(NEEDS_TWO_WAYPOINTS)
         for index, (lat, lon) in enumerate(waypoints):
             _check_coord_range(lat, lon, f"waypoint {index}")
         resolved_waypoints = list(waypoints)

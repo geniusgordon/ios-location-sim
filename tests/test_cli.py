@@ -47,7 +47,17 @@ def test_help_lists_all_commands():
 def test_walk_rejects_fewer_than_two_waypoints():
     result = runner.invoke(app, ["walk", "--via", "25.033,121.565"])
     assert result.exit_code != 0
-    assert "at least 2" in result.stdout
+    assert result.stdout.strip() == (
+        "a route needs at least 2 waypoints — pass --via 'lat,lon' twice"
+    )
+
+
+def test_walk_rejects_no_arguments():
+    result = runner.invoke(app, ["walk"])
+    assert result.exit_code != 0
+    assert result.stdout.strip() == (
+        "a walk needs a preset or at least 2 waypoints — pass --via 'lat,lon' twice"
+    )
 
 
 def test_walk_rejects_preset_and_via_together(tmp_path):
@@ -59,7 +69,22 @@ def test_walk_rejects_preset_and_via_together(tmp_path):
         app, ["walk", "home", "--via", "25.0,121.0", "--config", str(cfg)]
     )
     assert result.exit_code != 0
-    assert "not both" in result.stdout
+    assert result.stdout.strip() == "pass either a preset name or waypoints, not both"
+
+
+def test_walk_rejects_preset_and_via_together_even_when_via_is_malformed(tmp_path):
+    # The preset/--via conflict is the more useful message: it must be reported
+    # even when the (irrelevant, since it will be rejected anyway) --via value
+    # is not a parseable waypoint. Pins the check-before-parse ordering.
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[presets.home]\nwaypoints = [[25.0, 121.0], [25.1, 121.1]]\n'
+    )
+    result = runner.invoke(
+        app, ["walk", "home", "--via", "garbage", "--config", str(cfg)]
+    )
+    assert result.exit_code != 0
+    assert result.stdout.strip() == "pass either a preset name or waypoints, not both"
 
 
 def test_walk_help_exposes_no_clear_and_no_loop():

@@ -7,7 +7,6 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 from ios_loc.path import Coord
-
 from ios_loc.presets import Preset
 from ios_loc.runner import WalkStats
 from ios_loc.walker import Fix
