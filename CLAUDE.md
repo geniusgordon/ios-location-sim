@@ -97,9 +97,11 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   message, status bar only), meta (only when state/route/preset actually
   change), and fix (imperative, the map's dot-mover). Reading telemetry from a
   component above the status bar re-renders the MapLibre subtree once a second.
-- **`[lat, lon]` on the wire, `[lng, lat]` in MapLibre.** `MapView.toLngLat` is
-  the only place that flips a pair. A second flip anywhere else produces
-  plausible-looking coordinates in the wrong hemisphere, with no error.
+- **`[lat, lon]` on the wire, `[lng, lat]` in MapLibre.**
+  `src/ios_loc/web/ui/src/lib/coords.ts` exports `toLngLat` / `fromLngLat`, and
+  those two functions are the only places in the app that flip a pair. A third
+  flip anywhere else produces plausible-looking coordinates in the wrong
+  hemisphere, with no error.
 - **`web/static/` is committed build output.** A change under `web/ui/` that is
   not followed by `pnpm build` ships nothing.
 

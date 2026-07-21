@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import type { Fix, Stats } from "@/api/types"
 import { createWalkStore, nextReconnectDelay } from "./walkStore"
-import { initialModel } from "./walkReducer"
 
 function fix(n: number): Fix {
   return { elapsed_s: n, lat: 25, lon: 121, distance_m: n, speed_mps: 1.3, paused: false }
@@ -97,19 +96,6 @@ describe("snapshot identity", () => {
     store.dispatch({ type: "fix", fix: fix(5), stats, state: "walking" })
     expect(store.getModel().fix?.elapsed_s).toBe(5)
     expect(store.getModel().trail).toHaveLength(1)
-  })
-
-  it("reset() replaces the model and notifies both channels", () => {
-    const store = createWalkStore()
-    const meta = vi.fn()
-    const telemetry = vi.fn()
-    store.dispatch({ type: "state", state: "walking", error: null })
-    store.subscribeMeta(meta)
-    store.subscribeTelemetry(telemetry)
-    store.reset(initialModel)
-    expect(store.getModel().state).toBe("idle")
-    expect(meta).toHaveBeenCalledTimes(1)
-    expect(telemetry).toHaveBeenCalledTimes(1)
   })
 })
 

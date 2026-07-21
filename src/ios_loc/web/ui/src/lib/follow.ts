@@ -19,11 +19,6 @@ export function onRecenter(_state: FollowState): FollowState {
   return { following: true }
 }
 
-/** Our own easeTo/fitBounds. Must not count as a user pan. */
-export function onProgrammaticMove(state: FollowState): FollowState {
-  return state
-}
-
 export function shouldCenter(state: FollowState, hasFix: boolean): boolean {
   return state.following && hasFix
 }

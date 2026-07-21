@@ -18,7 +18,6 @@ export interface WalkStore {
   subscribeTelemetry(listener: () => void): Unsubscribe
   subscribeFix(listener: (fix: Fix) => void): Unsubscribe
   dispatch(msg: ServerMessage): void
-  reset(model: WalkModel): void
 }
 
 function channel<T extends (...args: never[]) => void>() {
@@ -66,12 +65,6 @@ export function createWalkStore(): WalkStore {
     subscribeFix: (l) => fixChannel.add(l),
     dispatch(msg) {
       commit(applyMessage(model, msg), msg.type === "fix" ? msg.fix : null)
-    },
-    reset(next) {
-      model = next
-      meta = metaOf(next)
-      telemetryChannel.emit()
-      metaChannel.emit()
     },
   }
 }

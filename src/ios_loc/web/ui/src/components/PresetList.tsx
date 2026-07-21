@@ -1,7 +1,5 @@
-import { MapPin, RefreshCw } from "lucide-react"
+import { MapPin } from "lucide-react"
 import type { Preset } from "@/api/types"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 
 export interface PresetListProps {
@@ -10,7 +8,6 @@ export interface PresetListProps {
   loading: boolean
   loadError: string | null
   onSelect(preset: Preset): void
-  onReload(): void
 }
 
 export default function PresetList(props: PresetListProps) {
@@ -22,19 +19,9 @@ export default function PresetList(props: PresetListProps) {
     )
   }
 
-  if (props.loadError) {
-    return (
-      <div className="p-4">
-        <Alert variant="destructive">
-          <AlertTitle>Could not read the config</AlertTitle>
-          <AlertDescription>{props.loadError}</AlertDescription>
-        </Alert>
-        <Button variant="outline" size="sm" className="mt-3" onClick={props.onReload}>
-          <RefreshCw className="size-4" /> Retry
-        </Button>
-      </div>
-    )
-  }
+  // The sidebar header owns the error and its Retry, so every mode sees it.
+  // Bail out here anyway: "no presets yet" is a lie when the load failed.
+  if (props.loadError) return null
 
   if (props.presets.length === 0) {
     return (

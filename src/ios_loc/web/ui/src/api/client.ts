@@ -24,6 +24,11 @@ export class ApiError extends Error {
   }
 }
 
+/** The message to show a user for any thrown value, server text preferred. */
+export function errorText(error: unknown): string {
+  return error instanceof ApiError ? error.detail : String(error)
+}
+
 // Injectable seam, matching the clock/poster/opener style used on the Python
 // side. Production code never calls setFetch.
 let doFetch: typeof fetch = (...args) => globalThis.fetch(...args)

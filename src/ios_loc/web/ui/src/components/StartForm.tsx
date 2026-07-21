@@ -1,6 +1,6 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Play } from "lucide-react"
-import { ApiError, startWalk } from "@/api/client"
+import { errorText, startWalk } from "@/api/client"
 import type { LatLon, StartRequest } from "@/api/types"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,8 @@ import { useWalkMeta } from "@/hooks/useWalkStream"
 
 export interface StartFormProps {
   presetName: string | null
+  /** The selected preset's own `loop`, so the switch can show the truth. */
+  presetLoop: boolean
   waypoints: LatLon[]
   profiles: string[]
   costing: string
@@ -34,13 +36,25 @@ export default function StartForm(props: StartFormProps) {
   // Empty means "inherit the preset / profile default" -- the backend already
   // treats null that way, so an empty box must send null, never 0.
   const [profile, setProfile] = useState("")
-  const [loop, setLoop] = useState(false)
+  // `loop` is the exception: it is always sent as a boolean, so the switch is
+  // authoritative in both directions. Sending null for an unchecked switch would
+  // let a preset saved with loop = true loop forever while the UI showed it off.
+  const [loop, setLoop] = useState(props.presetLoop)
   const [durationMin, setDurationMin] = useState("")
   const [scatter, setScatter] = useState("3")
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const usingPreset = props.presetName !== null
+
+  // Re-sync when the selection changes: switching presets must not carry the
+  // previous one's loop setting over.
+  const presetLoop = props.presetLoop
+  const presetName = props.presetName
+  useEffect(() => {
+    setLoop(presetLoop)
+  }, [presetLoop, presetName])
+
   const canStart = !running && !starting && (usingPreset || props.waypoints.length >= 2)
 
   const onStart = async () => {
@@ -55,7 +69,7 @@ export default function StartForm(props: StartFormProps) {
       profile: profile === "" ? null : profile,
       speed: null,
       costing: usingPreset ? null : props.costing,
-      loop: usingPreset && !loop ? null : loop,
+      loop,
       duration_s: Number.isFinite(minutes) && minutes > 0 ? minutes * 60 : null,
       // Clamped client-side: the server bounds this 0..100 and would 422 on
       // anything outside, which is a pointless round trip for a slider-ish
@@ -66,7 +80,7 @@ export default function StartForm(props: StartFormProps) {
       await startWalk(body)
       props.onStarted()
     } catch (err) {
-      setError(err instanceof ApiError ? err.detail : String(err))
+      setError(errorText(err))
     } finally {
       setStarting(false)
     }

@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Menu, Square } from "lucide-react"
 import type { WalkStateName } from "@/api/types"
-import { ApiError, stopWalk } from "@/api/client"
+import { errorText, stopWalk } from "@/api/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
@@ -35,13 +35,18 @@ function chipLabel(state: WalkStateName, paused: boolean): string {
   return state === "walking" && paused ? "paused" : LABEL[state]
 }
 
-function Stat(props: { label: string; value: string }) {
+function Stat(props: { label: string; value: string; truncate?: boolean }) {
   return (
-    <div className="flex flex-col leading-tight">
+    <div className={`flex min-w-0 flex-col leading-tight${props.truncate ? " max-w-50" : ""}`}>
       <span className="text-muted-foreground text-[10px] uppercase tracking-wide">
         {props.label}
       </span>
-      <span className="font-mono text-sm tabular-nums">{props.value}</span>
+      <span
+        className={`font-mono text-sm tabular-nums${props.truncate ? " truncate" : ""}`}
+        title={props.truncate ? props.value : undefined}
+      >
+        {props.value}
+      </span>
     </div>
   )
 }
@@ -58,7 +63,7 @@ export default function StatusBar(props: { onOpenSidebar(): void }) {
     try {
       await stopWalk()
     } catch (error) {
-      setStopError(error instanceof ApiError ? error.detail : String(error))
+      setStopError(errorText(error))
     } finally {
       setStopping(false)
     }
@@ -77,7 +82,8 @@ export default function StatusBar(props: { onOpenSidebar(): void }) {
       <Stat label="speed" value={formatSpeed(fix?.speed_mps ?? 0)} />
       <Stat label="laps" value={String(stats?.laps ?? 0)} />
       <Stat label="reconnects" value={String(stats?.reconnects ?? 0)} />
-      {meta.preset_name ? <Stat label="preset" value={meta.preset_name} /> : null}
+      {/* Bounded like the error span: a long preset name must not push Stop off-screen. */}
+      {meta.preset_name ? <Stat label="preset" value={meta.preset_name} truncate /> : null}
 
       <div className="ml-auto flex items-center gap-3">
         {/* The server's own words, never paraphrased -- an honest failure beats

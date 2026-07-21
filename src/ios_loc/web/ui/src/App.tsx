@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { LatLon, Preset } from "@/api/types"
-import { ApiError, getPresets } from "@/api/client"
+import { errorText, getPresets } from "@/api/client"
 import MapView from "@/components/MapView"
 import Sidebar, { type SidebarMode } from "@/components/Sidebar"
 import StatusBar from "@/components/StatusBar"
@@ -41,7 +41,7 @@ export default function App() {
       })
       .catch((error: unknown) => {
         if (mine !== loadId.current) return
-        setLoadError(error instanceof ApiError ? error.detail : String(error))
+        setLoadError(errorText(error))
       })
       .finally(() => {
         if (mine === loadId.current) setLoading(false)
@@ -55,8 +55,22 @@ export default function App() {
   const meta = useWalkMeta()
   const editing = mode === "editor" && sidebarOpen && !isRunning(meta.state)
 
+  // The moment the draft stops being the preset, it is an ad-hoc route -- keeping
+  // the name would start the OLD route on the phone while the map shows the new one.
+  const editDraft = useCallback((next: (w: LatLon[]) => LatLon[]) => {
+    setSelectedPreset(null)
+    setDraftWaypoints(next)
+  }, [])
+
   const [costing, setCosting] = useState("pedestrian")
-  const preview = useRoutePreview(draftWaypoints, costing, editing && !offline)
+  // Gated on the sidebar, not on the editor: picking a preset switches to "start"
+  // mode, and without a preview its waypoints would draw as disconnected dots.
+  // One debounced, server-cached Valhalla call.
+  const preview = useRoutePreview(
+    draftWaypoints,
+    costing,
+    sidebarOpen && !offline && !isRunning(meta.state),
+  )
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -65,11 +79,11 @@ export default function App() {
           draftWaypoints={draftWaypoints}
           draftRoute={preview.route}
           editing={editing}
-          onMapClick={(point) => setDraftWaypoints((w) => [...w, point])}
+          onMapClick={(point) => editDraft((w) => [...w, point])}
           onWaypointDrag={(index, point) =>
-            setDraftWaypoints((w) => w.map((p, i) => (i === index ? point : p)))
+            editDraft((w) => w.map((p, i) => (i === index ? point : p)))
           }
-          onWaypointClick={(index) => setDraftWaypoints((w) => w.filter((_, i) => i !== index))}
+          onWaypointClick={(index) => editDraft((w) => w.filter((_, i) => i !== index))}
         />
       </div>
       <StatusBar onOpenSidebar={() => setSidebarOpen(true)} />
@@ -91,9 +105,9 @@ export default function App() {
           setMode("start")
         }}
         draftWaypoints={draftWaypoints}
-        onClearWaypoints={() => setDraftWaypoints([])}
-        onRemoveLast={() => setDraftWaypoints((w) => w.slice(0, -1))}
-        route={preview.route}
+        onClearWaypoints={() => editDraft(() => [])}
+        onRemoveLast={() => editDraft((w) => w.slice(0, -1))}
+        presetLoop={presets.find((p) => p.name === selectedPreset)?.loop ?? false}
         lengthM={preview.lengthM}
         routeError={preview.error}
         routePending={preview.pending}

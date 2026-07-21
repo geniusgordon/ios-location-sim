@@ -1,4 +1,6 @@
+import { RefreshCw } from "lucide-react"
 import type { LatLon, Preset } from "@/api/types"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   Sheet,
   SheetContent,
@@ -37,7 +39,7 @@ export interface SidebarProps {
   draftWaypoints: LatLon[]
   onClearWaypoints(): void
   onRemoveLast(): void
-  route: LatLon[]
+  presetLoop: boolean
   lengthM: number | null
   routeError: string | null
   routePending: boolean
@@ -84,6 +86,20 @@ export default function Sidebar(props: SidebarProps) {
               </Button>
             ))}
           </div>
+          {/* Surfaced here, not inside PresetList: a failed /api/presets also
+              empties the Profile selects in the editor and the start form, and
+              an empty select with no explanation reads as a bug in the app. */}
+          {props.loadError ? (
+            <Alert variant="destructive" className="mt-2">
+              <AlertTitle>Could not read the config</AlertTitle>
+              <AlertDescription className="flex flex-col items-start gap-2">
+                <span>{props.loadError}</span>
+                <Button variant="outline" size="sm" onClick={props.onReloadPresets}>
+                  <RefreshCw className="size-4" /> Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : null}
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -94,7 +110,6 @@ export default function Sidebar(props: SidebarProps) {
               loading={props.loading}
               loadError={props.loadError}
               onSelect={props.onSelectPreset}
-              onReload={props.onReloadPresets}
             />
           ) : null}
           {props.mode === "editor" ? (
@@ -104,7 +119,6 @@ export default function Sidebar(props: SidebarProps) {
               onRemoveLast={props.onRemoveLast}
               profiles={props.profiles}
               offline={props.offline}
-              route={props.route}
               lengthM={props.lengthM}
               routeError={props.routeError}
               pending={props.routePending}
@@ -116,6 +130,7 @@ export default function Sidebar(props: SidebarProps) {
           {props.mode === "start" ? (
             <StartForm
               presetName={props.selectedPreset}
+              presetLoop={props.presetLoop}
               waypoints={props.draftWaypoints}
               profiles={props.profiles}
               costing={props.costing}

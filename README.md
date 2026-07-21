@@ -41,8 +41,6 @@ uv run ios-loc clear
 
 ## Map GUI
 
-### The map GUI
-
 ```bash
 uv run ios-loc gui               # serves 127.0.0.1:8765 and opens a browser
 uv run ios-loc gui --no-open --port 9000

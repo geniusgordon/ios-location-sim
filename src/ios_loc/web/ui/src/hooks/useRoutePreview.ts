@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { LatLon, RouteResponse } from "@/api/types"
-import { ApiError, postRoute } from "@/api/client"
+import { errorText, postRoute } from "@/api/client"
 
 /**
  * Long enough that dragging a waypoint does not hammer Valhalla, short enough
@@ -66,7 +66,7 @@ export function createRoutePreviewRunner(options: RoutePreviewOptions): RoutePre
             if (mine !== generation) return
             if (error instanceof DOMException && error.name === "AbortError") return
             options.onResult(null)
-            options.onError(error instanceof ApiError ? error.detail : String(error))
+            options.onError(errorText(error))
             options.onPending(false)
           })
       }, options.delayMs)

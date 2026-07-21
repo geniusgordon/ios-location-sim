@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Save, Trash2, Undo2 } from "lucide-react"
-import { ApiError, savePreset } from "@/api/client"
+import { errorText, savePreset } from "@/api/client"
 import type { LatLon } from "@/api/types"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -25,7 +25,6 @@ export interface RouteEditorProps {
   onRemoveLast(): void
   profiles: string[]
   offline: boolean
-  route: LatLon[]
   lengthM: number | null
   routeError: string | null
   pending: boolean
@@ -55,7 +54,7 @@ export default function RouteEditor(props: RouteEditorProps) {
       })
       props.onSaved(name.trim())
     } catch (error) {
-      setSaveError(error instanceof ApiError ? error.detail : String(error))
+      setSaveError(errorText(error))
     } finally {
       setSaving(false)
     }
