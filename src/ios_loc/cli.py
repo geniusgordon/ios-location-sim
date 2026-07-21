@@ -16,12 +16,14 @@ from ios_loc.path import Coord
 from ios_loc.presets import ConfigError, load_config
 from ios_loc.routing import RoutingError, ValhallaClient
 from ios_loc.runner import run_walk
-from ios_loc.session import LocationSession
+from ios_loc.session import LocationSession, SessionLost
 from ios_loc.walker import Walker
 
 app = typer.Typer(no_args_is_help=True, help="Simulate GPS location on iOS 17+ devices.")
 presets_app = typer.Typer(no_args_is_help=True, help="Inspect configured presets.")
 app.add_typer(presets_app, name="presets")
+
+logger = logging.getLogger("ios_loc.progress")
 
 _DURATION_RE = re.compile(r"^(\d+(?:\.\d+)?)([smh]?)$")
 _UNITS = {"s": 1.0, "m": 60.0, "h": 3600.0, "": 1.0}
@@ -99,10 +101,14 @@ def set_location(
 
     try:
         asyncio.run(_run())
-    except DiscoveryError as exc:
-        _fail(f"FAILED: {exc}")
     except KeyboardInterrupt:
         pass
+    except typer.Exit:
+        raise
+    except DiscoveryError as exc:
+        _fail(f"FAILED: {exc}")
+    except Exception as exc:
+        _fail(f"FAILED: {exc}")
 
 
 @app.command()
@@ -116,7 +122,11 @@ def clear(udid: str = typer.Option(None, help="Target a specific device UDID."))
 
     try:
         asyncio.run(_run())
+    except typer.Exit:
+        raise
     except DiscoveryError as exc:
+        _fail(f"FAILED: {exc}")
+    except Exception as exc:
         _fail(f"FAILED: {exc}")
 
 
@@ -150,13 +160,18 @@ def walk(
     profile: str = typer.Option(None, help="Speed profile name, e.g. walk or bike."),
     speed: float = typer.Option(None, help="Override the profile's base speed, m/s."),
     costing: str = typer.Option(None, help="Override the Valhalla costing model."),
-    loop: bool = typer.Option(False, "--loop", help="Repeat the route indefinitely."),
+    loop: bool = typer.Option(
+        None, "--loop/--no-loop", help="Repeat the route (overrides a preset's setting)."
+    ),
     duration: str = typer.Option(None, help="Stop after this long, e.g. 3h."),
     scatter: float = typer.Option(3.0, help="GPS scatter in metres."),
     offline: bool = typer.Option(False, "--offline", help="Fail if the route is not cached."),
     udid: str = typer.Option(None, help="Target a specific device UDID."),
     config: pathlib.Path = typer.Option(None, help="Path to config.toml."),
     log: pathlib.Path = typer.Option(None, help="Also write progress to this file."),
+    no_clear: bool = typer.Option(
+        False, "--no-clear", help="Leave the simulated location in place on exit."
+    ),
 ) -> None:
     """Walk or cycle a route, holding the simulated location for the whole run."""
     try:
@@ -165,12 +180,14 @@ def walk(
         _fail(f"config error: {exc}")
 
     if preset:
+        if via:
+            _fail("pass either a preset name or --via waypoints, not both")
         if preset not in presets:
             _fail(f"unknown preset {preset!r}; try: ios-loc presets list")
         chosen = presets[preset]
         waypoints = chosen.waypoints
         profile_name = profile or chosen.profile
-        loop = loop or chosen.loop
+        loop = chosen.loop if loop is None else loop
     else:
         if not via or len(via) < 2:
             _fail("a route needs at least 2 waypoints — pass --via 'lat,lon' twice")
@@ -179,6 +196,7 @@ def walk(
         except ValueError as exc:
             _fail(str(exc))
         profile_name = profile or "walk"
+        loop = bool(loop)
 
     if profile_name not in profiles:
         _fail(f"unknown profile {profile_name!r}; try: ios-loc presets list")
@@ -201,7 +219,11 @@ def walk(
 
     handlers = [logging.StreamHandler(sys.stderr)]
     if log:
-        handlers.append(logging.FileHandler(log))
+        try:
+            log.parent.mkdir(parents=True, exist_ok=True)
+            handlers.append(logging.FileHandler(log))
+        except OSError as exc:
+            _fail(f"could not open log file {log}: {exc}")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", handlers=handlers)
 
     try:
@@ -222,21 +244,26 @@ def walk(
         f"({selected.speed * 3.6:.1f} km/h), loop={loop}"
     )
 
-    def report(fix) -> None:
-        if int(fix.elapsed_s) % 30 == 0:
-            typer.echo(
-                f"  {fix.elapsed_s / 60:6.1f} min  {walker.distance_m / 1000:6.2f} km  "
-                f"laps={walker.laps}  {fix.speed_mps * 3.6:4.1f} km/h"
-                f"{'  (paused)' if fix.paused else ''}"
-            )
-
     async def _run() -> None:
         session = LocationSession(lambda: open_simulation(udid))
+
+        def report(fix) -> None:
+            if int(fix.elapsed_s) % 30 == 0:
+                logger.info(
+                    "  %6.1f min  %6.2f km  laps=%s  %4.1f km/h%s  reconnects=%s",
+                    fix.elapsed_s / 60,
+                    walker.distance_m / 1000,
+                    walker.laps,
+                    fix.speed_mps * 3.6,
+                    "  (paused)" if fix.paused else "",
+                    session.reconnects,
+                )
+
         await session.start()
         try:
             stats = await run_walk(walker, session, duration_s=duration_s, on_fix=report)
         finally:
-            await session.stop(clear=True)
+            await session.stop(clear=not no_clear)
         typer.echo(
             f"done: {stats.distance_m / 1000:.2f} km in {stats.elapsed_s / 60:.1f} min, "
             f"{stats.laps} laps, {stats.reconnects} reconnects"
@@ -244,7 +271,16 @@ def walk(
 
     try:
         asyncio.run(_run())
-    except DiscoveryError as exc:
-        _fail(f"FAILED: {exc}")
     except KeyboardInterrupt:
         typer.echo("\ninterrupted")
+    except typer.Exit:
+        raise
+    except DiscoveryError as exc:
+        _fail(f"FAILED: {exc}")
+    except SessionLost as exc:
+        _fail(f"FAILED: {exc}")
+    except Exception as exc:
+        _fail(
+            f"FAILED: {exc}\n"
+            "Check the device is unlocked, trusted, and has Developer Mode enabled."
+        )

@@ -48,3 +48,39 @@ def test_walk_rejects_fewer_than_two_waypoints():
     result = runner.invoke(app, ["walk", "--via", "25.033,121.565"])
     assert result.exit_code != 0
     assert "at least 2" in result.stdout
+
+
+def test_walk_rejects_preset_and_via_together(tmp_path):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[presets.home]\nwaypoints = [[25.0, 121.0], [25.1, 121.1]]\n'
+    )
+    result = runner.invoke(
+        app, ["walk", "home", "--via", "25.0,121.0", "--config", str(cfg)]
+    )
+    assert result.exit_code != 0
+    assert "not both" in result.stdout
+
+
+def test_walk_help_exposes_no_clear_and_no_loop():
+    result = runner.invoke(app, ["walk", "--help"])
+    assert result.exit_code == 0
+    assert "--no-clear" in result.stdout
+    assert "--no-loop" in result.stdout
+
+
+def test_bad_log_path_reports_cleanly(tmp_path):
+    # A file where a directory is expected: mkdir must fail, not traceback.
+    blocker = tmp_path / "blocker"
+    blocker.write_text("i am a file")
+    result = runner.invoke(
+        app,
+        [
+            "walk",
+            "--via", "25.033,121.565",
+            "--via", "25.038,121.568",
+            "--log", str(blocker / "sub" / "run.log"),
+        ],
+    )
+    assert result.exit_code != 0
+    assert "Traceback" not in result.stdout
