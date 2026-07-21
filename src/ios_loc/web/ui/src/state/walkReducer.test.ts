@@ -64,6 +64,17 @@ describe("applyMessage: fix", () => {
     expect(model.trail[TRAIL_LIMIT - 1].elapsed_s).toBe(TRAIL_LIMIT + 39)
   })
 
+  it("pins the live trail cap value to 120 via hardcoded bounds", () => {
+    let model = initialModel
+    for (let i = 0; i < 400; i++) {
+      model = applyMessage(model, { type: "fix", fix: fix(i), stats, state: "walking" })
+    }
+    // Hardcoded assertions that fail if TRAIL_LIMIT changes from 120
+    expect(model.trail).toHaveLength(120)
+    expect(model.trail[0].elapsed_s).toBe(280)
+    expect(model.trail[119].elapsed_s).toBe(399)
+  })
+
   it("never mutates the model it was given", () => {
     const before = fromStatus(status)
     const trailBefore = before.trail
