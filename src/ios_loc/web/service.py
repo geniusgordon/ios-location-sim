@@ -146,8 +146,8 @@ class WalkService:
                 return
             task = run.task
             # Publish the "stopped" state before awaiting anything further, so
-            # a second concurrent stop() (queued on the lock behind us) sees
-            # self._run is already None and returns without broadcasting again.
+            # an unlocked status() reader can see self._run is already None
+            # during the cancel/teardown window.
             self._run = None
             self._state = WalkState.IDLE
             self._error = None
@@ -155,7 +155,9 @@ class WalkService:
                 task.cancel()
                 try:
                     await task
-                except BaseException:  # noqa: BLE001 -- _drive already logs/reports
+                except asyncio.CancelledError:
+                    # CancelledError is expected: we just cancelled the task above.
+                    # The cancellation is self-inflicted and is the normal shutdown path.
                     pass
             await self._teardown(run)
             self._broadcast({"type": "state", "state": self._state.value, "error": None})
