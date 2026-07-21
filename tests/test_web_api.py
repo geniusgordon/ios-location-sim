@@ -1,3 +1,4 @@
+import pathlib
 import time
 
 import pytest
@@ -515,3 +516,21 @@ def test_only_the_snapshot_carries_route_and_trail(context):
         assert message["type"] in ("fix", "state")
         assert "route" not in message
         assert "trail" not in message
+
+
+def test_the_committed_bundle_is_a_real_build(tmp_path):
+    """A deleted or stale-scaffold bundle ships a broken GUI, silently.
+
+    Mounted for real, so this also exercises the committed directory rather
+    than a synthetic one.
+    """
+    import ios_loc.web.api as web_api
+
+    static = pathlib.Path(web_api.__file__).parent / "static"
+    index = (static / "index.html").read_text(encoding="utf-8")
+    assert "<div id=\"root\">" in index, "static/index.html is not the built React app"
+    assert "/assets/" in index, "built index.html does not reference a hashed bundle"
+
+    client = TestClient(_make_app(tmp_path, static_dir=static))
+    assert client.get("/").headers["content-type"].startswith("text/html")
+    assert client.get("/api/walk").json()["state"] == "idle"

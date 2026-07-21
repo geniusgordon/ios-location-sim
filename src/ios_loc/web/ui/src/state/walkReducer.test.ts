@@ -1,0 +1,149 @@
+import { describe, expect, it } from "vitest"
+import type { Fix, Stats, WalkStatus } from "@/api/types"
+import {
+  TRAIL_LIMIT,
+  applyMessage,
+  fromStatus,
+  initialModel,
+  isRunning,
+  metaEquals,
+  metaOf,
+} from "./walkReducer"
+
+function fix(n: number): Fix {
+  return { elapsed_s: n, lat: 25 + n / 1000, lon: 121, distance_m: n * 1.3, speed_mps: 1.3, paused: false }
+}
+
+const stats: Stats = { elapsed_s: 1, distance_m: 1.3, laps: 0, reconnects: 0, ticks: 1 }
+
+const status: WalkStatus = {
+  state: "walking",
+  error: null,
+  fix: fix(3),
+  stats,
+  route: [[25, 121], [25.01, 121]],
+  trail: [fix(1), fix(2), fix(3)],
+  preset_name: "park",
+  profile: "walk",
+  loop: true,
+  length_m: 1200,
+}
+
+describe("fromStatus", () => {
+  it("adopts every field of the connect snapshot", () => {
+    const model = fromStatus(status)
+    expect(model.state).toBe("walking")
+    expect(model.route).toEqual([[25, 121], [25.01, 121]])
+    expect(model.trail).toHaveLength(3)
+    expect(model.preset_name).toBe("park")
+    expect(model.length_m).toBe(1200)
+  })
+
+  it("caps an oversized snapshot trail", () => {
+    const long = { ...status, trail: Array.from({ length: 500 }, (_, i) => fix(i)) }
+    expect(fromStatus(long).trail).toHaveLength(TRAIL_LIMIT)
+    expect(fromStatus(long).trail[TRAIL_LIMIT - 1].elapsed_s).toBe(499)
+  })
+})
+
+describe("applyMessage: fix", () => {
+  it("appends to the trail and replaces fix/stats/state", () => {
+    const model = applyMessage(fromStatus(status), { type: "fix", fix: fix(4), stats, state: "walking" })
+    expect(model.trail).toHaveLength(4)
+    expect(model.fix?.elapsed_s).toBe(4)
+    expect(model.stats).toBe(stats)
+  })
+
+  it("caps the trail at TRAIL_LIMIT, dropping the oldest", () => {
+    let model = initialModel
+    for (let i = 0; i < TRAIL_LIMIT + 40; i++) {
+      model = applyMessage(model, { type: "fix", fix: fix(i), stats, state: "walking" })
+    }
+    expect(model.trail).toHaveLength(TRAIL_LIMIT)
+    expect(model.trail[0].elapsed_s).toBe(40)
+    expect(model.trail[TRAIL_LIMIT - 1].elapsed_s).toBe(TRAIL_LIMIT + 39)
+  })
+
+  it("pins the live trail cap value to 120 via hardcoded bounds", () => {
+    let model = initialModel
+    for (let i = 0; i < 400; i++) {
+      model = applyMessage(model, { type: "fix", fix: fix(i), stats, state: "walking" })
+    }
+    // Hardcoded assertions that fail if TRAIL_LIMIT changes from 120
+    expect(model.trail).toHaveLength(120)
+    expect(model.trail[0].elapsed_s).toBe(280)
+    expect(model.trail[119].elapsed_s).toBe(399)
+  })
+
+  it("never mutates the model it was given", () => {
+    const before = fromStatus(status)
+    const trailBefore = before.trail
+    applyMessage(before, { type: "fix", fix: fix(9), stats, state: "walking" })
+    expect(before.trail).toBe(trailBefore)
+    expect(before.trail).toHaveLength(3)
+  })
+
+  it("leaves meta unchanged, so the map and sidebar need not re-render", () => {
+    const before = fromStatus(status)
+    const after = applyMessage(before, { type: "fix", fix: fix(4), stats, state: "walking" })
+    expect(metaEquals(metaOf(before), metaOf(after))).toBe(true)
+  })
+
+  it("does change meta when the fix message carries a new state", () => {
+    const before = fromStatus(status)
+    const after = applyMessage(before, { type: "fix", fix: fix(4), stats, state: "reconnecting" })
+    expect(after.state).toBe("reconnecting")
+    expect(metaEquals(metaOf(before), metaOf(after))).toBe(false)
+  })
+})
+
+describe("applyMessage: state", () => {
+  it("updates state and error without touching the trail or route", () => {
+    const before = fromStatus(status)
+    const after = applyMessage(before, { type: "state", state: "error", error: "device lost" })
+    expect(after.state).toBe("error")
+    expect(after.error).toBe("device lost")
+    expect(after.trail).toBe(before.trail)
+    expect(after.route).toBe(before.route)
+  })
+
+  it("clears a stale error when a clean state arrives", () => {
+    const errored = applyMessage(initialModel, { type: "state", state: "error", error: "boom" })
+    const cleared = applyMessage(errored, { type: "state", state: "idle", error: null })
+    expect(cleared.error).toBeNull()
+  })
+})
+
+describe("applyMessage: snapshot", () => {
+  it("replaces the whole model, so a reconnecting socket resyncs rather than merges", () => {
+    const drifted = applyMessage(fromStatus(status), { type: "fix", fix: fix(99), stats, state: "walking" })
+    const resynced = applyMessage(drifted, { type: "snapshot", status: { ...status, trail: [fix(1)] } })
+    expect(resynced.trail).toHaveLength(1)
+    expect(resynced.fix?.elapsed_s).toBe(3)
+  })
+})
+
+describe("metaEquals", () => {
+  it("compares route contents, not identity", () => {
+    const a = metaOf(fromStatus(status))
+    const b = metaOf(fromStatus({ ...status, route: [[25, 121], [25.01, 121]] }))
+    expect(metaEquals(a, b)).toBe(true)
+  })
+
+  it("notices a route of the same length with different coordinates", () => {
+    const a = metaOf(fromStatus(status))
+    const b = metaOf(fromStatus({ ...status, route: [[25, 121], [99, 121]] }))
+    expect(metaEquals(a, b)).toBe(false)
+  })
+})
+
+describe("isRunning", () => {
+  it("covers every state in which the device is ours", () => {
+    expect(isRunning("starting")).toBe(true)
+    expect(isRunning("walking")).toBe(true)
+    expect(isRunning("reconnecting")).toBe(true)
+    expect(isRunning("idle")).toBe(false)
+    expect(isRunning("finished")).toBe(false)
+    expect(isRunning("error")).toBe(false)
+  })
+})
