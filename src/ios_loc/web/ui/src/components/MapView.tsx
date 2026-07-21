@@ -3,22 +3,9 @@ import maplibregl from "maplibre-gl"
 import { Crosshair } from "lucide-react"
 import type { LatLon } from "@/api/types"
 import { Button } from "@/components/ui/button"
+import { fromLngLat, toLngLat } from "@/lib/coords"
 import { initialFollow, onRecenter, onUserPan, shouldCenter } from "@/lib/follow"
 import { useWalkMeta, walkStore } from "@/hooks/useWalkStream"
-
-/**
- * THE conversion point. The API speaks [lat, lon]; MapLibre and GeoJSON speak
- * [lng, lat]. Every coordinate entering MapLibre goes through here, and
- * `fromLngLat` below is the only other place a pair gets flipped.
- */
-export function toLngLat(point: LatLon): [number, number] {
-  return [point[1], point[0]]
-}
-
-/** The inverse of `toLngLat`: MapLibre's {lng, lat} back to wire order. */
-export function fromLngLat(lngLat: { lng: number; lat: number }): LatLon {
-  return [lngLat.lat, lngLat.lng]
-}
 
 const OSM_STYLE: maplibregl.StyleSpecification = {
   version: 8,
