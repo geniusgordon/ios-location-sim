@@ -32,3 +32,21 @@ def test_decodes_real_valhalla_shape():
             (25.033074, 121.565546),
         ]
     )
+
+
+def test_truncated_input_raises_rather_than_fabricating():
+    # The canonical string's first coordinate is '_p~iF~ps|U'; dropping the 'U'
+    # terminator previously yielded (38.5, -4.85664) — a correct latitude with a
+    # fabricated longitude, i.e. California silently becoming Spain.
+    with pytest.raises(ValueError, match="truncated"):
+        decode_polyline("_p~iF~ps|", precision=5)
+
+
+def test_invalid_character_raises():
+    with pytest.raises(ValueError, match="invalid character"):
+        decode_polyline("!", precision=5)
+
+
+def test_valid_input_still_decodes_after_validation():
+    pts = decode_polyline("_p~iF~ps|U_ulLnnqC_mqNvxq`@", precision=5)
+    assert pts == pytest.approx([(38.5, -120.2), (40.7, -120.95), (43.252, -126.453)])
