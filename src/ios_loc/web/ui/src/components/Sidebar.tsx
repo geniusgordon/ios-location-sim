@@ -9,6 +9,9 @@ import {
 import { Button } from "@/components/ui/button"
 import PresetList from "@/components/PresetList"
 import RouteEditor from "@/components/RouteEditor"
+import StartForm from "@/components/StartForm"
+import { isRunning } from "@/state/walkReducer"
+import { useWalkMeta } from "@/hooks/useWalkStream"
 
 export type SidebarMode = "presets" | "editor" | "start"
 
@@ -41,9 +44,13 @@ export interface SidebarProps {
   costing: string
   onCostingChange(costing: string): void
   onPresetSaved(name: string): void
+  onStarted(): void
 }
 
 export default function Sidebar(props: SidebarProps) {
+  const meta = useWalkMeta()
+  const locked = isRunning(meta.state)
+
   return (
     <Sheet
       open={props.open}
@@ -70,6 +77,8 @@ export default function Sidebar(props: SidebarProps) {
                 size="sm"
                 variant={props.mode === mode ? "default" : "outline"}
                 onClick={() => props.onModeChange(mode)}
+                disabled={mode === "editor" && locked}
+                title={mode === "editor" && locked ? "Stop the walk to edit a route" : undefined}
               >
                 {TITLE[mode]}
               </Button>
@@ -105,9 +114,14 @@ export default function Sidebar(props: SidebarProps) {
             />
           ) : null}
           {props.mode === "start" ? (
-            <p className="text-muted-foreground p-4 text-sm">
-              Profiles: {props.profiles.join(", ") || "—"}. The start form lands in the next task.
-            </p>
+            <StartForm
+              presetName={props.selectedPreset}
+              waypoints={props.draftWaypoints}
+              profiles={props.profiles}
+              costing={props.costing}
+              offline={props.offline}
+              onStarted={props.onStarted}
+            />
           ) : null}
         </div>
       </SheetContent>

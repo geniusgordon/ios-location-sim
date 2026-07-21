@@ -5,7 +5,8 @@ import MapView from "@/components/MapView"
 import Sidebar, { type SidebarMode } from "@/components/Sidebar"
 import StatusBar from "@/components/StatusBar"
 import { useRoutePreview } from "@/hooks/useRoutePreview"
-import { useWalkStream } from "@/hooks/useWalkStream"
+import { useWalkStream, useWalkMeta } from "@/hooks/useWalkStream"
+import { isRunning } from "@/state/walkReducer"
 
 export default function App() {
   useWalkStream()
@@ -51,7 +52,8 @@ export default function App() {
     reloadPresets()
   }, [reloadPresets])
 
-  const editing = mode === "editor" && sidebarOpen
+  const meta = useWalkMeta()
+  const editing = mode === "editor" && sidebarOpen && !isRunning(meta.state)
 
   const [costing, setCosting] = useState("pedestrian")
   const preview = useRoutePreview(draftWaypoints, costing, editing && !offline)
@@ -102,6 +104,7 @@ export default function App() {
           reloadPresets()
           setMode("start")
         }}
+        onStarted={() => setSidebarOpen(false)}
       />
     </div>
   )
