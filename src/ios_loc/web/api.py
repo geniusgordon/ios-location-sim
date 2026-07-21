@@ -6,7 +6,7 @@ import asyncio
 import dataclasses
 import pathlib
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
 from ios_loc.presets import ConfigError, Preset, load_config, save_preset
@@ -102,6 +102,20 @@ def create_app(
     async def stop_walk() -> WalkStatus:
         await service.stop()
         return service.status()
+
+    @app.websocket("/ws")
+    async def stream(socket: WebSocket) -> None:
+        await socket.accept()
+        with service.subscribe() as queue:
+            # The snapshot is the only message carrying route and trail, so a tab
+            # connecting mid-run gets the whole picture exactly once.
+            await socket.send_json({"type": "snapshot", "status": service.status().model_dump()})
+            try:
+                while True:
+                    message = await queue.get()
+                    await socket.send_json(message)
+            except WebSocketDisconnect:
+                return
 
     if static_dir is not None and static_dir.exists():
         app.mount("/", StaticFiles(directory=static_dir, html=True), name="ui")

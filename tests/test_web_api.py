@@ -206,3 +206,65 @@ def test_api_routes_still_resolve_when_a_static_dir_is_mounted(tmp_path):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/json")
     assert response.json()["state"] == "idle"
+
+
+def test_the_socket_opens_with_a_snapshot(context):
+    client, *_ = context
+    with client.websocket_connect("/ws") as socket:
+        message = socket.receive_json()
+    assert message["type"] == "snapshot"
+    assert message["status"]["state"] == "idle"
+
+
+def test_the_socket_streams_fixes_then_a_finished_state(context):
+    client, *_ = context
+    with client.websocket_connect("/ws") as socket:
+        assert socket.receive_json()["type"] == "snapshot"
+        client.post(
+            "/api/walk",
+            json={"waypoints": [[25.0, 121.0], [25.1, 121.1]], "duration_s": 2},
+        )
+        seen = [socket.receive_json() for _ in range(4)]
+
+    kinds = [m["type"] for m in seen]
+    assert kinds.count("fix") == 2
+    assert seen[-1] == {"type": "state", "state": "finished", "error": None}
+
+
+def test_two_viewers_each_get_their_own_snapshot_and_full_stream(context):
+    client, *_ = context
+    with client.websocket_connect("/ws") as first, client.websocket_connect("/ws") as second:
+        assert first.receive_json()["type"] == "snapshot"
+        assert second.receive_json()["type"] == "snapshot"
+
+        client.post(
+            "/api/walk",
+            json={"waypoints": [[25.0, 121.0], [25.1, 121.1]], "duration_s": 2},
+        )
+        # "walking" (start), two fixes, then "finished" -- both viewers see the
+        # identical sequence, each from its own independent queue.
+        first_seen = [first.receive_json() for _ in range(4)]
+        second_seen = [second.receive_json() for _ in range(4)]
+
+    expected = ["state", "fix", "fix", "state"]
+    assert [m["type"] for m in first_seen] == expected
+    assert [m["type"] for m in second_seen] == expected
+
+
+def test_a_disconnected_socket_does_not_stop_the_walk(context):
+    client, *_ = context
+    with client.websocket_connect("/ws") as socket:
+        assert socket.receive_json()["type"] == "snapshot"
+        client.post(
+            "/api/walk",
+            json={"waypoints": [[25.0, 121.0], [25.1, 121.1]], "duration_s": 2},
+        )
+        # Close immediately, mid-walk, without draining any fixes.
+
+    # The walk is still running/finishing on the service side, unaffected by
+    # the departed viewer; a fresh connection can still see it end cleanly.
+    with client.websocket_connect("/ws") as socket:
+        message = socket.receive_json()
+        assert message["type"] == "snapshot"
+        assert message["status"]["state"] in ("walking", "finished")
+    client.delete("/api/walk")
