@@ -45,8 +45,17 @@ export interface SidebarProps {
 
 export default function Sidebar(props: SidebarProps) {
   return (
-    <Sheet open={props.open} onOpenChange={props.onOpenChange}>
-      <SheetContent side="left" className="flex w-100 flex-col gap-0 p-0 sm:max-w-100">
+    <Sheet
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      modal={false}
+      disablePointerDismissal
+    >
+      <SheetContent
+        side="left"
+        showOverlay={false}
+        className="flex w-100 flex-col gap-0 p-0 sm:max-w-100"
+      >
         <SheetHeader className="border-b">
           <SheetTitle>{TITLE[props.mode]}</SheetTitle>
           <SheetDescription>
