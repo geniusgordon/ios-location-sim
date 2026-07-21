@@ -309,3 +309,45 @@ async def test_stop_racing_a_slow_connecting_start_leaves_a_consistent_state():
         for t in asyncio.all_tasks() - tasks_before - {asyncio.current_task()}:
             if not t.done():
                 t.cancel()
+
+
+async def test_subscribers_receive_one_message_per_fix():
+    service, _ = make_service()
+    with service.subscribe() as queue:
+        await service.start(spec(duration_s=3.0))
+        await service.wait_finished()
+        messages = _drain(queue)
+
+    fixes = [m for m in messages if m["type"] == "fix"]
+    assert len(fixes) == 3
+    assert fixes[0]["fix"]["elapsed_s"] == 1.0
+    assert fixes[-1]["stats"]["ticks"] == 3
+
+
+async def test_a_full_queue_drops_oldest_and_never_blocks_the_walk():
+    service, session = make_service(queue_size=4)
+    with service.subscribe() as queue:
+        await service.start(spec(duration_s=20.0))
+        await service.wait_finished()
+        messages = _drain(queue)
+
+    # The run completes all 20 ticks regardless of the stalled subscriber.
+    assert len(session.sets) == 20
+    assert len(messages) <= 4
+    # What survives is the newest, not the oldest.
+    assert messages[-1]["type"] == "state"
+    assert messages[-1]["state"] == "finished"
+
+
+async def test_unsubscribing_removes_the_queue():
+    service, _ = make_service()
+    with service.subscribe() as queue:
+        pass
+    assert queue not in service._subscribers
+
+
+def _drain(queue):
+    out = []
+    while not queue.empty():
+        out.append(queue.get_nowait())
+    return out
