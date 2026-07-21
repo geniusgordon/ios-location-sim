@@ -34,6 +34,7 @@ class FakeSession:
         self.started = False
         self.stopped = False
         self.cleared = None
+        self.stop_calls = 0
         self._fail_with = fail_with
         self._fail_on = fail_on
 
@@ -41,6 +42,7 @@ class FakeSession:
         self.started = True
 
     async def stop(self, clear=True):
+        self.stop_calls += 1
         self.stopped = True
         self.cleared = clear
 
@@ -132,3 +134,52 @@ async def test_stop_ends_the_run_and_clears_the_device():
     await service.stop()
     assert service.status().state is WalkState.IDLE
     assert session.cleared is True
+
+
+async def test_finished_walk_can_be_restarted_without_stop():
+    service, session = make_service()
+    await service.start(spec(duration_s=5.0))
+    await service.wait_finished()
+    assert service.status().state is WalkState.FINISHED
+
+    # No intervening stop() — a finished run must not permanently block start().
+    await service.start(spec(duration_s=3.0))
+    await service.wait_finished()
+
+    status = service.status()
+    assert status.state is WalkState.FINISHED
+    assert status.stats.ticks == 3
+    # The second walk actually drove the session again (5 ticks from the first
+    # walk, plus 3 more from the second).
+    assert len(session.sets) == 8
+
+
+async def test_status_reports_finished_stats_until_next_start():
+    service, _ = make_service()
+    await service.start(spec(duration_s=5.0))
+    await service.wait_finished()
+
+    status = service.status()
+    assert status.state is WalkState.FINISHED
+    assert status.stats is not None
+    assert status.stats.ticks == 5
+    assert status.fix is not None
+
+
+async def test_stop_after_natural_finish_does_not_stop_session_twice():
+    service, session = make_service()
+    await service.start(spec(duration_s=5.0))
+    await service.wait_finished()
+    assert session.stop_calls == 1
+
+    await service.stop()
+    assert session.stop_calls == 1
+    assert service.status().state is WalkState.IDLE
+
+
+async def test_second_start_while_genuinely_running_still_refused():
+    service, _ = make_service()
+    await service.start(spec(duration_s=5.0))
+    with pytest.raises(WalkAlreadyRunning):
+        await service.start(spec(duration_s=5.0))
+    await service.stop()

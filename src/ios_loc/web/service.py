@@ -46,6 +46,7 @@ class _Run:
     latest_fix: FixOut | None = None
     stats: StatsOut | None = None
     ticks: int = 0
+    torn_down: bool = False
 
 
 class WalkService:
@@ -95,7 +96,8 @@ class WalkService:
         )
 
     async def start(self, spec: StartSpec) -> WalkStatus:
-        if self._run is not None:
+        run = self._run
+        if run is not None and run.task is not None and not run.task.done():
             raise WalkAlreadyRunning("a walk is already running")
 
         self._state = WalkState.STARTING
@@ -181,6 +183,9 @@ class WalkService:
                 )
 
     async def _teardown(self, run: _Run) -> None:
+        if run.torn_down:
+            return
+        run.torn_down = True
         try:
             await run.session.stop(clear=True)
         except Exception as exc:  # noqa: BLE001 — teardown must not mask the result
