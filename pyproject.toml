@@ -6,13 +6,20 @@ dependencies = [
     "pymobiledevice3>=9.38.0",
     "typer>=0.12",
     "requests>=2.32",
+    "fastapi>=0.139.2",
+    "uvicorn[standard]>=0.51.0",
+    "tomli-w>=1.2.0",
 ]
 
 [project.scripts]
 ios-loc = "ios_loc.cli:app"
 
 [dependency-groups]
-dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+]
 
 [build-system]
 requires = ["hatchling"]
