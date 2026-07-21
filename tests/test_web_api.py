@@ -1,5 +1,7 @@
 import pytest
+from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocket as StarletteWebSocket
 
 from ios_loc.presets import Preset, load_config, save_preset
 from ios_loc.routing import RoutingError
@@ -268,3 +270,92 @@ def test_a_disconnected_socket_does_not_stop_the_walk(context):
         assert message["type"] == "snapshot"
         assert message["status"]["state"] in ("walking", "finished")
     client.delete("/api/walk")
+
+
+def test_a_real_websocketdisconnect_during_send_is_handled_and_cleans_up(tmp_path, monkeypatch):
+    """Drive the `except WebSocketDisconnect` branch directly, rather than relying
+    on TestClient teardown (which ends the handler via CancelledError instead,
+    never actually raising WebSocketDisconnect from send_json)."""
+    route_client = FakeRouteClient()
+    clock = VirtualClock()
+    service = WalkService(
+        route_client=route_client,
+        session_factory=FakeSession,
+        clock=clock,
+        sleep=clock.sleep,
+    )
+    app = create_app(service=service, route_client=route_client, config_path=tmp_path / "config.toml")
+
+    original_send_json = StarletteWebSocket.send_json
+    calls = {"n": 0}
+
+    async def flaky_send_json(self, data):
+        calls["n"] += 1
+        # Call 1 is the connect snapshot -- let it through so the test client
+        # observes a normal connection. Call 2 is the first broadcast (the
+        # "walking" state message) -- fail it like a dropped real socket would.
+        if calls["n"] == 2:
+            raise WebSocketDisconnect(code=1006)
+        return await original_send_json(self, data)
+
+    monkeypatch.setattr(StarletteWebSocket, "send_json", flaky_send_json)
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws") as socket:
+            assert socket.receive_json()["type"] == "snapshot"
+            # This triggers the broadcast that the patched send_json turns into
+            # a WebSocketDisconnect on the server side.
+            response = client.post(
+                "/api/walk",
+                json={"waypoints": [[25.0, 121.0], [25.1, 121.1]], "duration_s": 2},
+            )
+            assert response.status_code == 200
+
+        # (a) the handler must have exited cleanly -- no exception escaped the
+        # `with client.websocket_connect(...)` block above, which is itself
+        # part of the proof.
+        # (b) its subscription must be released.
+        assert service._subscribers == set()
+        # (c) the walk itself is unaffected by the departed viewer.
+        status_response = client.get("/api/walk")
+        assert status_response.status_code == 200
+        assert status_response.json()["state"] in ("walking", "finished")
+        client.delete("/api/walk")
+
+
+def test_the_socket_still_resolves_when_a_static_dir_is_mounted(tmp_path):
+    """Route registration order matters: a `/` StaticFiles mount registered
+    before the websocket route would swallow every request, `/ws` included."""
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    (static_dir / "index.html").write_text("<html>ui</html>")
+
+    app = _make_app(tmp_path, static_dir=static_dir)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws") as socket:
+            message = socket.receive_json()
+
+    assert message["type"] == "snapshot"
+    assert message["status"]["state"] == "idle"
+
+
+def test_only_the_snapshot_carries_route_and_trail(context):
+    """The whole point of splitting snapshot/fix/state messages is that route
+    and trail ride along once, at connect, instead of every tick."""
+    client, *_ = context
+    with client.websocket_connect("/ws") as socket:
+        snapshot = socket.receive_json()
+        assert snapshot["type"] == "snapshot"
+        assert "route" in snapshot["status"]
+        assert "trail" in snapshot["status"]
+
+        client.post(
+            "/api/walk",
+            json={"waypoints": [[25.0, 121.0], [25.1, 121.1]], "duration_s": 2},
+        )
+        seen = [socket.receive_json() for _ in range(4)]
+
+    for message in seen:
+        assert message["type"] in ("fix", "state")
+        assert "route" not in message
+        assert "trail" not in message
