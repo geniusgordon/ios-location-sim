@@ -8,6 +8,24 @@ from ios_loc.web.service import WalkService
 from tests.test_web_service import SQUARE, FakeRouteClient, FakeSession, VirtualClock
 
 
+def _make_app(tmp_path, session=None, static_dir=None):
+    route_client = FakeRouteClient()
+    clock = VirtualClock()
+    service = WalkService(
+        route_client=route_client,
+        session_factory=(lambda: session) if session is not None else FakeSession,
+        clock=clock,
+        sleep=clock.sleep,
+    )
+    app = create_app(
+        service=service,
+        route_client=route_client,
+        config_path=tmp_path / "config.toml",
+        static_dir=static_dir,
+    )
+    return app
+
+
 @pytest.fixture
 def context(tmp_path):
     config = tmp_path / "config.toml"
@@ -144,3 +162,47 @@ def test_deleting_the_walk_stops_it(context):
     response = client.delete("/api/walk")
     assert response.json()["state"] == "idle"
     assert session.cleared is True
+
+
+def test_a_device_failure_at_start_is_a_503_with_the_real_cause(tmp_path):
+    class FailingSession(FakeSession):
+        async def start(self, attempts=3):
+            raise ConnectionError("no device found")
+
+    app = _make_app(tmp_path, session=FailingSession())
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/walk",
+            json={"waypoints": [[25.0, 121.0], [25.1, 121.1]]},
+        )
+    assert response.status_code == 503
+    assert "no device found" in response.json()["detail"]
+
+
+def test_a_programming_error_at_start_is_not_a_503(tmp_path):
+    class BuggySession(FakeSession):
+        async def start(self, attempts=3):
+            raise TypeError("bad argument")
+
+    app = _make_app(tmp_path, session=BuggySession())
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/walk",
+            json={"waypoints": [[25.0, 121.0], [25.1, 121.1]]},
+        )
+    assert response.status_code == 500
+    assert response.status_code != 503
+
+
+def test_api_routes_still_resolve_when_a_static_dir_is_mounted(tmp_path):
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    (static_dir / "index.html").write_text("<html>ui</html>")
+
+    app = _make_app(tmp_path, static_dir=static_dir)
+    with TestClient(app) as client:
+        response = client.get("/api/walk")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json()["state"] == "idle"

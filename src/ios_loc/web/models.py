@@ -74,6 +74,12 @@ class PresetOut(BaseModel):
         )
 
 
+class PresetsListOut(BaseModel):
+    presets: list[PresetOut]
+    profiles: list[str]
+    offline: bool
+
+
 class PresetIn(BaseModel):
     name: str = Field(min_length=1)
     waypoints: list[list[float]] = Field(min_length=2)

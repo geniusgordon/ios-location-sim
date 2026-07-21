@@ -11,9 +11,11 @@ from fastapi.staticfiles import StaticFiles
 
 from ios_loc.presets import ConfigError, Preset, load_config, save_preset
 from ios_loc.routing import RoutingError
+from ios_loc.session import _PROGRAMMING_ERRORS
 from ios_loc.web.models import (
     PresetIn,
     PresetOut,
+    PresetsListOut,
     RouteRequest,
     RouteResponse,
     StartRequest,
@@ -38,23 +40,17 @@ def create_app(
         except ConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.get("/api/presets")
-    def list_presets() -> dict:
+    @app.get("/api/presets", response_model=PresetsListOut)
+    def list_presets() -> PresetsListOut:
         profiles, presets = _config()
-        return {
-            "presets": [PresetOut.from_preset(p) for p in sorted(presets.values(), key=lambda p: p.name)],
-            "profiles": sorted(profiles),
-            "offline": offline,
-        }
+        return PresetsListOut(
+            presets=[PresetOut.from_preset(p) for p in sorted(presets.values(), key=lambda p: p.name)],
+            profiles=sorted(profiles),
+            offline=offline,
+        )
 
     @app.post("/api/presets", response_model=PresetOut)
     def create_preset(body: PresetIn) -> PresetOut:
-        profiles, _ = _config()
-        if body.profile not in profiles:
-            raise HTTPException(
-                status_code=400,
-                detail=f"unknown profile {body.profile!r}; available: {', '.join(sorted(profiles))}",
-            )
         preset = Preset(
             name=body.name,
             waypoints=[(lat, lon) for lat, lon in body.waypoints],
@@ -95,6 +91,10 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except (RoutingError, ValueError) as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except _PROGRAMMING_ERRORS:
+            # A bug, not a device dropout: let it propagate to a 500 instead of
+            # telling the client (wrongly) that retrying is reasonable.
+            raise
         except Exception as exc:  # device or tunnel failure at start
             raise HTTPException(status_code=503, detail=f"{type(exc).__name__}: {exc}") from exc
 
