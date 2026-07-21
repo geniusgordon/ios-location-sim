@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import os
 import pathlib
+import tempfile
 
 import requests
 
@@ -13,6 +16,8 @@ from ios_loc.path import Coord, Path
 DEFAULT_VALHALLA_URL = "https://valhalla1.openstreetmap.de"
 DEFAULT_CACHE_DIR = pathlib.Path.home() / ".cache" / "ios-loc" / "routes"
 _TIMEOUT_S = 30
+
+logger = logging.getLogger(__name__)
 
 
 def decode_polyline(encoded: str, precision: int = 6) -> list[Coord]:
@@ -101,8 +106,9 @@ class ValhallaClient:
             raise ValueError("routing needs at least 2 waypoints")
 
         cache_file = self.cache_dir / f"{self._cache_key(waypoints, costing)}.json"
-        if cache_file.exists():
-            return self._to_path(json.loads(cache_file.read_text()))
+        cached = self._read_cache(cache_file)
+        if cached is not None:
+            return self._to_path(cached)
 
         if self.offline:
             raise RouteNotCached(
@@ -111,16 +117,46 @@ class ValhallaClient:
             )
 
         payload = self._fetch(waypoints, costing)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        cache_file.write_text(json.dumps(payload))
+        self._write_cache(cache_file, payload)
         return self._to_path(payload)
 
     def _cache_key(self, waypoints: list[Coord], costing: str) -> str:
         blob = json.dumps(
-            {"w": [[round(lat, 6), round(lon, 6)] for lat, lon in waypoints], "c": costing},
+            {
+                "u": self.base_url,
+                "w": [[round(lat, 6), round(lon, 6)] for lat, lon in waypoints],
+                "c": costing,
+            },
             sort_keys=True,
         )
         return hashlib.sha256(blob.encode()).hexdigest()[:32]
+
+    def _read_cache(self, cache_file: pathlib.Path) -> dict | None:
+        """Return the cached payload, or None if absent. Discards corrupt entries."""
+        if not cache_file.exists():
+            return None
+        try:
+            return json.loads(cache_file.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("discarding unreadable cache entry %s: %s", cache_file, exc)
+            if self.offline:
+                raise RouteNotCached(
+                    f"cached route {cache_file} is corrupt and --offline forbids refetching"
+                ) from exc
+            cache_file.unlink(missing_ok=True)
+            return None
+
+    def _write_cache(self, cache_file: pathlib.Path, payload: dict) -> None:
+        """Write atomically, so a process killed mid-write leaves no partial entry."""
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=self.cache_dir, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as handle:
+                json.dump(payload, handle)
+            os.replace(tmp, cache_file)
+        except BaseException:
+            pathlib.Path(tmp).unlink(missing_ok=True)
+            raise
 
     def _fetch(self, waypoints: list[Coord], costing: str) -> dict:
         body = {
@@ -132,7 +168,7 @@ class ValhallaClient:
             resp = self._poster(f"{self.base_url}/route", json=body, timeout=_TIMEOUT_S)
             resp.raise_for_status()
             return resp.json()
-        except Exception as exc:  # network, HTTP, or JSON failure
+        except (requests.RequestException, ValueError) as exc:
             raise RoutingError(f"Valhalla request failed: {exc}") from exc
 
     def _to_path(self, payload: dict) -> Path:
@@ -142,9 +178,14 @@ class ValhallaClient:
 
         coords: list[Coord] = []
         for leg in legs:
-            leg_coords = decode_polyline(leg["shape"], precision=6)
-            if coords and leg_coords and coords[-1] == leg_coords[0]:
-                leg_coords = leg_coords[1:]  # drop duplicated junction point
+            try:
+                shape = leg["shape"]
+                leg_coords = decode_polyline(shape, precision=6)
+            except (KeyError, ValueError) as exc:
+                raise RoutingError(f"malformed route geometry from Valhalla: {exc}") from exc
+            # Strip every leading point repeating the junction, not just the first.
+            while coords and leg_coords and coords[-1] == leg_coords[0]:
+                leg_coords = leg_coords[1:]
             coords.extend(leg_coords)
 
         if len(coords) < 2:

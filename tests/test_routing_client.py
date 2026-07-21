@@ -102,3 +102,68 @@ def test_route_without_legs_raises(tmp_path):
     client = ValhallaClient(cache_dir=tmp_path, poster=poster)
     with pytest.raises(RoutingError):
         client.route(WAYPOINTS, costing="pedestrian")
+
+
+def test_different_base_url_is_a_different_cache_entry(tmp_path):
+    # A local Valhalla container and the public server may return different routes;
+    # they must not share a cache entry.
+    p1, p2 = FakePoster(), FakePoster()
+    ValhallaClient(base_url="https://valhalla1.openstreetmap.de", cache_dir=tmp_path, poster=p1).route(
+        WAYPOINTS, costing="pedestrian"
+    )
+    ValhallaClient(base_url="http://localhost:8002", cache_dir=tmp_path, poster=p2).route(
+        WAYPOINTS, costing="pedestrian"
+    )
+    assert len(p1.calls) == 1
+    assert len(p2.calls) == 1, "local server was served the public server's cached route"
+
+
+def test_corrupt_cache_entry_is_discarded_and_refetched(tmp_path):
+    poster = FakePoster()
+    client = ValhallaClient(cache_dir=tmp_path, poster=poster)
+    client.route(WAYPOINTS, costing="pedestrian")
+    # Simulate a process killed mid-write.
+    cache_file = next(tmp_path.glob("*.json"))
+    cache_file.write_text(cache_file.read_text()[:20])
+    path = client.route(WAYPOINTS, costing="pedestrian")
+    assert path.length_m >= 0
+    assert len(poster.calls) == 2, "corrupt entry should have forced a refetch"
+
+
+def test_corrupt_cache_offline_raises_route_not_cached(tmp_path):
+    ValhallaClient(cache_dir=tmp_path, poster=FakePoster()).route(WAYPOINTS, costing="pedestrian")
+    cache_file = next(tmp_path.glob("*.json"))
+    cache_file.write_text("{not json")
+    offline = ValhallaClient(cache_dir=tmp_path, offline=True)
+    with pytest.raises(RouteNotCached):
+        offline.route(WAYPOINTS, costing="pedestrian")
+
+
+def test_cache_write_leaves_no_temp_files(tmp_path):
+    ValhallaClient(cache_dir=tmp_path, poster=FakePoster()).route(WAYPOINTS, costing="pedestrian")
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_malformed_geometry_raises_routing_error(tmp_path):
+    poster = FakePoster(payload={"trip": {"legs": [{"shape": "!"}]}})
+    client = ValhallaClient(cache_dir=tmp_path, poster=poster)
+    with pytest.raises(RoutingError):
+        client.route(WAYPOINTS, costing="pedestrian")
+
+
+def test_all_repeated_junction_points_are_stripped(tmp_path):
+    # Leg 2 opens with the junction point twice over.
+    poster = FakePoster(
+        payload={
+            "trip": {
+                "legs": [
+                    {"shape": "{n{vn@qmwzfF"},
+                    {"shape": "{n{vn@qmwzfF??DyF"},
+                ]
+            }
+        }
+    )
+    path = ValhallaClient(cache_dir=tmp_path, poster=poster).route(WAYPOINTS, costing="pedestrian")
+    assert path.coords == pytest.approx([(25.032958, 121.565417), (25.032955, 121.565542)])
+    consecutive_dupes = [a for a, b in zip(path.coords, path.coords[1:]) if a == b]
+    assert consecutive_dupes == []
