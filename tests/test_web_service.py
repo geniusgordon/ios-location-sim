@@ -368,6 +368,31 @@ def _drain(queue):
     return out
 
 
+async def test_a_routing_failure_during_start_resets_to_idle_with_an_error():
+    """Before the fix, everything between `self._state = STARTING` and the
+    drive task being published sat outside the try/except that resets state on
+    failure, so a routing failure (or any other error in that window) left the
+    service wedged in STARTING forever with no `error` set (Finding 1)."""
+    from ios_loc.routing import RoutingError
+
+    route_client = FakeRouteClient(error=RoutingError("valhalla said no"))
+    service, _ = make_service(route_client=route_client)
+
+    with pytest.raises(RoutingError):
+        await service.start(spec())
+
+    status = service.status()
+    assert status.state is WalkState.IDLE
+    assert status.error is not None
+    assert "valhalla said no" in status.error
+
+    # The service must still be usable afterwards -- not permanently wedged.
+    route_client.error = None
+    await service.start(spec(duration_s=1.0))
+    await service.wait_finished()
+    assert service.status().state is WalkState.FINISHED
+
+
 async def test_device_lost_is_reported_as_an_error_not_a_clean_finish():
     session = FakeSession(fail_with=SessionLost("device unreachable"), fail_on=3)
     service, _ = make_service(session=session)

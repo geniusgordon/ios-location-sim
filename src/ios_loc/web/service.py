@@ -148,34 +148,39 @@ class WalkService:
 
             self._state = WalkState.STARTING
             self._error = None
-            # RouteClient.route() is synchronous `requests`; keep it off the loop.
-            path = await asyncio.to_thread(
-                self._route_client.route, spec.waypoints, spec.costing
-            )
-
-            walker = Walker(
-                path, spec.profile, loop=spec.loop, rng=self._rng, scatter_m=spec.scatter_m
-            )
-            session = _WatchedSession(self._session_factory(), self._clock)
-            run = _Run(
-                walker=walker,
-                session=session,
-                path=path,
-                spec=spec,
-                trail=collections.deque(maxlen=self._trail_len),
-            )
-            self._run = run
-
             try:
+                # RouteClient.route() is synchronous `requests`; keep it off the loop.
+                path = await asyncio.to_thread(
+                    self._route_client.route, spec.waypoints, spec.costing
+                )
+
+                walker = Walker(
+                    path, spec.profile, loop=spec.loop, rng=self._rng, scatter_m=spec.scatter_m
+                )
+                session = _WatchedSession(self._session_factory(), self._clock)
+                run = _Run(
+                    walker=walker,
+                    session=session,
+                    path=path,
+                    spec=spec,
+                    trail=collections.deque(maxlen=self._trail_len),
+                )
+                self._run = run
+
                 await session.start()
-            except BaseException:
+
+                self._state = WalkState.WALKING
+                run.task = asyncio.create_task(self._drive(run), name="ios-loc-walk")
+                run.watchdog = asyncio.create_task(self._watch_stalls(run), name="ios-loc-stall")
+            except BaseException as exc:
+                # Anything from here to "the drive task is published" — a
+                # routing failure, a bad Walker/session construction, a failed
+                # device connect — must not leave the service wedged in
+                # STARTING forever with no explanation.
                 self._run = None
                 self._state = WalkState.IDLE
+                self._error = f"{type(exc).__name__}: {exc}"
                 raise
-
-            self._state = WalkState.WALKING
-            run.task = asyncio.create_task(self._drive(run), name="ios-loc-walk")
-            run.watchdog = asyncio.create_task(self._watch_stalls(run), name="ios-loc-stall")
             self._broadcast({"type": "state", "state": self._state.value, "error": None})
             return self.status()
 
