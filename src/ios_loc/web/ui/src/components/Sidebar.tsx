@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import PresetList from "@/components/PresetList"
+import RouteEditor from "@/components/RouteEditor"
 
 export type SidebarMode = "presets" | "editor" | "start"
 
@@ -31,6 +32,15 @@ export interface SidebarProps {
   selectedPreset: string | null
   onSelectPreset(preset: Preset): void
   draftWaypoints: LatLon[]
+  onClearWaypoints(): void
+  onRemoveLast(): void
+  route: LatLon[]
+  lengthM: number | null
+  routeError: string | null
+  routePending: boolean
+  costing: string
+  onCostingChange(costing: string): void
+  onPresetSaved(name: string): void
 }
 
 export default function Sidebar(props: SidebarProps) {
@@ -70,9 +80,20 @@ export default function Sidebar(props: SidebarProps) {
             />
           ) : null}
           {props.mode === "editor" ? (
-            <p className="text-muted-foreground p-4 text-sm">
-              {props.draftWaypoints.length} waypoints. The editor lands in the next task.
-            </p>
+            <RouteEditor
+              waypoints={props.draftWaypoints}
+              onClearWaypoints={props.onClearWaypoints}
+              onRemoveLast={props.onRemoveLast}
+              profiles={props.profiles}
+              offline={props.offline}
+              route={props.route}
+              lengthM={props.lengthM}
+              routeError={props.routeError}
+              pending={props.routePending}
+              costing={props.costing}
+              onCostingChange={props.onCostingChange}
+              onSaved={props.onPresetSaved}
+            />
           ) : null}
           {props.mode === "start" ? (
             <p className="text-muted-foreground p-4 text-sm">

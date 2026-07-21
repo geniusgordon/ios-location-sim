@@ -4,6 +4,7 @@ import { ApiError, getPresets } from "@/api/client"
 import MapView from "@/components/MapView"
 import Sidebar, { type SidebarMode } from "@/components/Sidebar"
 import StatusBar from "@/components/StatusBar"
+import { useRoutePreview } from "@/hooks/useRoutePreview"
 import { useWalkStream } from "@/hooks/useWalkStream"
 
 export default function App() {
@@ -20,7 +21,6 @@ export default function App() {
 
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null)
   const [draftWaypoints, setDraftWaypoints] = useState<LatLon[]>([])
-  const [draftRoute] = useState<LatLon[]>([])
 
   // Only the newest load may write state. Two overlapping fetches (StrictMode
   // double-invokes the mount effect in dev) would otherwise let whichever
@@ -53,12 +53,15 @@ export default function App() {
 
   const editing = mode === "editor" && sidebarOpen
 
+  const [costing, setCosting] = useState("pedestrian")
+  const preview = useRoutePreview(draftWaypoints, costing, editing && !offline)
+
   return (
     <div className="flex h-full w-full flex-col">
       <div className="min-h-0 flex-1">
         <MapView
           draftWaypoints={draftWaypoints}
-          draftRoute={draftRoute}
+          draftRoute={preview.route}
           editing={editing}
           onMapClick={(point) => setDraftWaypoints((w) => [...w, point])}
           onWaypointDrag={(index, point) =>
@@ -86,6 +89,19 @@ export default function App() {
           setMode("start")
         }}
         draftWaypoints={draftWaypoints}
+        onClearWaypoints={() => setDraftWaypoints([])}
+        onRemoveLast={() => setDraftWaypoints((w) => w.slice(0, -1))}
+        route={preview.route}
+        lengthM={preview.lengthM}
+        routeError={preview.error}
+        routePending={preview.pending}
+        costing={costing}
+        onCostingChange={setCosting}
+        onPresetSaved={(name) => {
+          setSelectedPreset(name)
+          reloadPresets()
+          setMode("start")
+        }}
       />
     </div>
   )
