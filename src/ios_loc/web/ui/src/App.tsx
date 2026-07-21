@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { LatLon, Preset } from "@/api/types"
 import { ApiError, getPresets } from "@/api/client"
 import MapView from "@/components/MapView"
@@ -22,19 +22,29 @@ export default function App() {
   const [draftWaypoints, setDraftWaypoints] = useState<LatLon[]>([])
   const [draftRoute] = useState<LatLon[]>([])
 
+  // Only the newest load may write state. Two overlapping fetches (StrictMode
+  // double-invokes the mount effect in dev) would otherwise let whichever
+  // RESOLVES last win, stranding a stale error beside freshly loaded presets.
+  const loadId = useRef(0)
+
   const reloadPresets = useCallback(() => {
+    const mine = ++loadId.current
     setLoading(true)
     setLoadError(null)
     getPresets()
       .then((data) => {
+        if (mine !== loadId.current) return
         setPresets(data.presets)
         setProfiles(data.profiles)
         setOffline(data.offline)
       })
       .catch((error: unknown) => {
+        if (mine !== loadId.current) return
         setLoadError(error instanceof ApiError ? error.detail : String(error))
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (mine === loadId.current) setLoading(false)
+      })
   }, [])
 
   useEffect(() => {
