@@ -166,6 +166,55 @@ def test_deleting_the_walk_stops_it(context):
     assert session.cleared is True
 
 
+def test_app_shutdown_clears_the_device_if_a_walk_is_running(tmp_path):
+    """Ctrl-C (or any process exit) must not leave the phone frozen at a fake
+    position with the tunnel open. `TestClient` used as a context manager runs
+    the app's lifespan startup on enter and shutdown on exit, which is the
+    same event uvicorn fires on a real Ctrl-C -- so exiting the `with` block
+    below without ever calling DELETE /api/walk stands in for that."""
+    route_client = FakeRouteClient()
+    session = FakeSession()
+    clock = VirtualClock()
+    service = WalkService(
+        route_client=route_client,
+        session_factory=lambda: session,
+        clock=clock,
+        sleep=clock.sleep,
+    )
+    app = create_app(
+        service=service, route_client=route_client, config_path=tmp_path / "config.toml"
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/walk",
+            json={"waypoints": [[25.0, 121.0], [25.1, 121.1]], "duration_s": 100},
+        )
+        assert response.status_code == 200
+        assert response.json()["state"] == "walking"
+        # No DELETE /api/walk here -- the process is "killed" by the `with`
+        # block exiting instead, exactly like a Ctrl-C during a walk.
+
+    assert session.cleared is True, "shutdown must clear the device even mid-walk"
+    assert session.stopped is True
+
+
+def test_app_shutdown_with_no_walk_running_does_not_raise(tmp_path):
+    route_client = FakeRouteClient()
+    clock = VirtualClock()
+    service = WalkService(
+        route_client=route_client,
+        session_factory=FakeSession,
+        clock=clock,
+        sleep=clock.sleep,
+    )
+    app = create_app(
+        service=service, route_client=route_client, config_path=tmp_path / "config.toml"
+    )
+    with TestClient(app) as client:
+        assert client.get("/api/walk").json()["state"] == "idle"
+    # Reaching here without an exception is the assertion.
+
+
 def test_a_device_failure_at_start_is_a_503_with_the_real_cause(tmp_path):
     class FailingSession(FakeSession):
         async def start(self, attempts=3):

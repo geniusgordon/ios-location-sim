@@ -70,7 +70,7 @@ class _WatchedSession:
         return getattr(self._inner, "reconnects", 0)
 
     async def start(self, attempts: int = 3) -> None:
-        await self._inner.start()
+        await self._inner.start(attempts=attempts)
 
     async def stop(self, clear: bool = True) -> None:
         await self._inner.stop(clear=clear)
@@ -275,13 +275,25 @@ class WalkService:
             raise
 
     async def _teardown(self, run: _Run) -> None:
+        """Stop the session and clear the device -- exactly once, on success.
+
+        The flag is set only *after* `session.stop()` returns, not before the
+        await. If this call is cancelled while suspended inside that await
+        (e.g. a concurrent stop() cancelling the drive task mid-teardown),
+        CancelledError propagates -- deliberately uncaught here -- and
+        `torn_down` stays False, so whoever calls `_teardown` next actually
+        retries the clear instead of finding a no-op. A regular (non-cancel)
+        failure is logged and still counts as "done": retrying it here would
+        not fix a real device/tunnel failure, and that path already has its
+        own reconnect logic in session.py.
+        """
         if run.torn_down:
             return
-        run.torn_down = True
         try:
             await run.session.stop(clear=True)
         except Exception as exc:  # noqa: BLE001 — teardown must not mask the result
             logger.warning("could not stop the session cleanly: %s", exc)
+        run.torn_down = True
 
     def _on_fix(self, run: _Run, fix) -> None:
         out = FixOut.from_fix(fix)

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import logging
 import pathlib
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
@@ -23,6 +25,8 @@ from ios_loc.web.models import (
 )
 from ios_loc.web.service import StartSpec, WalkAlreadyRunning, WalkService
 
+logger = logging.getLogger(__name__)
+
 
 def create_app(
     *,
@@ -32,7 +36,20 @@ def create_app(
     offline: bool = False,
     static_dir: pathlib.Path | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="ios-loc", version="1")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        try:
+            yield
+        finally:
+            # Whatever ends the process -- Ctrl-C, a signal, the test client's
+            # `with` block exiting -- must clear the device. `service.stop()`
+            # is a no-op if nothing is running, so this is safe on every exit.
+            try:
+                await service.stop()
+            except Exception:  # noqa: BLE001 — shutdown must not raise; log and move on
+                logger.exception("failed to stop the walk and clear the device on shutdown")
+
+    app = FastAPI(title="ios-loc", version="1", lifespan=lifespan)
 
     def _config():
         try:

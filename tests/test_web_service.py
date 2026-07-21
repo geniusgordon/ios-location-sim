@@ -36,7 +36,7 @@ class FakeSession:
     set.
     """
 
-    def __init__(self, fail_with=None, fail_on=None, start_gate=None):
+    def __init__(self, fail_with=None, fail_on=None, start_gate=None, stop_gate=None):
         self.sets = []
         self.reconnects = 0
         self.started = False
@@ -48,6 +48,15 @@ class FakeSession:
         self._fail_on = fail_on
         self._start_gate = start_gate
         self.entered_start = asyncio.Event()
+        # `stop_gate`, if given, makes the *first* stop() call block until the
+        # gate resolves (or is cancelled out from under it) -- so a test can
+        # suspend a teardown mid-`await` without guessing timing. Only the
+        # first call blocks: a retried stop() after a cancelled attempt must
+        # proceed and actually clear the device, which is the whole point of
+        # the interrupted-teardown test.
+        self._stop_gate = stop_gate
+        self._stop_gate_consumed = False
+        self.entered_stop = asyncio.Event()
 
     async def start(self, attempts=3):
         self.start_calls += 1
@@ -57,6 +66,10 @@ class FakeSession:
         self.started = True
 
     async def stop(self, clear=True):
+        self.entered_stop.set()
+        if self._stop_gate is not None and not self._stop_gate_consumed:
+            self._stop_gate_consumed = True
+            await self._stop_gate.wait()
         self.stop_calls += 1
         self.stopped = True
         self.cleared = clear
@@ -376,6 +389,38 @@ async def test_programming_errors_end_the_run_and_surface_the_type():
     assert status.state is WalkState.ERROR
     assert "TypeError" in status.error
     assert len(session.sets) == 2  # it did not retry the bug
+
+
+async def test_teardown_interrupted_mid_await_is_retried_not_skipped():
+    """A concurrent stop() cancelling the drive task while it is suspended
+    inside its own natural-finish teardown must not leave the device
+    un-cleared.
+
+    Sequence: the walk finishes naturally, so `_drive`'s `finally` calls
+    `_teardown`, which calls `session.stop()` and blocks (the gate). While
+    it's blocked, a `service.stop()` call (e.g. the user hitting stop right
+    as the walk ends) cancels the still-running drive task. That delivers
+    CancelledError into the suspended `session.stop()` call -- the clear
+    never happened on this attempt. `service.stop()` then calls `_teardown`
+    again itself; that second call must actually retry the clear rather than
+    finding `torn_down` already (wrongly) latched.
+    """
+    gate = asyncio.Event()
+    session = FakeSession(stop_gate=gate)
+    service, _ = make_service(session=session)
+
+    await service.start(spec(duration_s=1.0))
+    # Let the walk run to its natural finish; _drive's own finally then calls
+    # _teardown, which calls session.stop() and suspends inside the gate.
+    await session.entered_stop.wait()
+    assert session.cleared is None, "the first, blocked stop() call has not completed yet"
+
+    # A concurrent DELETE /api/walk cancels the still-running drive task
+    # while it is suspended in that very await.
+    await service.stop()
+
+    assert session.cleared is True, "the interrupted teardown must be retried, not skipped"
+    assert service.status().state is WalkState.IDLE
 
 
 async def test_a_slow_set_reports_reconnecting():
