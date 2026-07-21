@@ -41,12 +41,15 @@ class RecordingSim:
         self.cleared = True
 
 
-def make_session(sim, sleep):
+def make_session(sim, sleep, clock=None):
     @asynccontextmanager
     async def opener():
         yield sim
 
-    return LocationSession(opener, sleep=sleep)
+    kwargs = {"sleep": sleep}
+    if clock is not None:
+        kwargs["clock"] = clock
+    return LocationSession(opener, **kwargs)
 
 
 def make_walker(loop=True):
@@ -57,7 +60,7 @@ def make_walker(loop=True):
 async def test_runs_for_the_requested_duration():
     clock = VirtualClock()
     sim = RecordingSim()
-    session = make_session(sim, clock.sleep)
+    session = make_session(sim, clock.sleep, clock=clock)
     await session.start()
     stats = await run_walk(
         make_walker(), session, duration_s=60.0, clock=clock, sleep=clock.sleep
@@ -76,7 +79,7 @@ async def test_ticks_are_anchored_to_absolute_deadlines():
         sim.sets.append((lat, lon))
 
     sim.set = slow_set
-    session = make_session(sim, clock.sleep)
+    session = make_session(sim, clock.sleep, clock=clock)
     await session.start()
     await run_walk(make_walker(), session, duration_s=10.0, clock=clock, sleep=clock.sleep)
     # Each sleep compensates for the 0.3 s spent working.
@@ -87,7 +90,7 @@ async def test_walk_clock_freezes_during_an_outage():
     """A reconnect must not advance the walker — that would be a teleport."""
     clock = VirtualClock()
     sim = RecordingSim(fail_on={5})
-    session = make_session(sim, clock.sleep)
+    session = make_session(sim, clock.sleep, clock=clock)
     await session.start()
     walker = make_walker()
     stats = await run_walk(
@@ -101,10 +104,73 @@ async def test_walk_clock_freezes_during_an_outage():
     assert stats.distance_m < 20 * 1.3 * 1.5
 
 
+async def test_outage_does_not_cause_a_catch_up_burst():
+    # The spec's rule: an outage costs distance and never produces a jump. A
+    # naive `next_deadline += tick_s` fires one tick per lost second the instant
+    # the device returns, sweeping hundreds of metres at once.
+    from collections import Counter
+
+    clock = VirtualClock()
+    stamps = []
+
+    class OutageSim:
+        def __init__(self):
+            self.n = 0
+
+        async def set(self, lat, lon):
+            self.n += 1
+            if self.n == 5:
+                clock.now += 300.0  # a five-minute dropout
+                raise ConnectionError("dropped")
+            stamps.append(clock.now)
+
+        async def clear(self):
+            pass
+
+    sims = iter([OutageSim() for _ in range(10)])
+
+    @asynccontextmanager
+    async def opener():
+        yield next(sims)
+
+    session = LocationSession(opener, sleep=clock.sleep, clock=clock)
+    await session.start()
+    await run_walk(make_walker(), session, duration_s=600.0, clock=clock, sleep=clock.sleep)
+
+    worst = Counter(stamps).most_common(1)[0][1]
+    assert worst <= 2, f"{worst} fixes pushed at one instant - catch-up burst"
+
+
+async def test_duration_is_honoured_while_the_device_is_down():
+    # max_attempts=0 means retry forever; --duration must still end the run.
+    clock = VirtualClock()
+
+    @asynccontextmanager
+    async def opener():
+        raise OSError("device gone")
+        yield  # pragma: no cover
+
+    good = RecordingSim()
+
+    @asynccontextmanager
+    async def first_ok():
+        yield good
+
+    session = LocationSession(first_ok, sleep=clock.sleep, clock=clock)
+    await session.start()
+    session._opener = opener
+    session._sim = None
+    stats = await run_walk(
+        make_walker(), session, duration_s=60.0, clock=clock, sleep=clock.sleep
+    )
+    assert clock.now < 10_000, "run did not stop at its deadline"
+    assert stats.ticks >= 1
+
+
 async def test_stops_when_a_non_looping_walker_finishes():
     clock = VirtualClock()
     sim = RecordingSim()
-    session = make_session(sim, clock.sleep)
+    session = make_session(sim, clock.sleep, clock=clock)
     await session.start()
     path = Path([(0.0, 0.0), (0.0005, 0.0)])  # ~55 m
     walker = Walker(
@@ -118,7 +184,7 @@ async def test_stops_when_a_non_looping_walker_finishes():
 async def test_on_fix_callback_receives_every_fix():
     clock = VirtualClock()
     sim = RecordingSim()
-    session = make_session(sim, clock.sleep)
+    session = make_session(sim, clock.sleep, clock=clock)
     await session.start()
     seen = []
     await run_walk(

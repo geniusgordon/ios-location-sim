@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from contextlib import AsyncExitStack
 
 logger = logging.getLogger(__name__)
@@ -31,11 +32,13 @@ class LocationSession:
         max_backoff_s: float = 30.0,
         max_attempts: int = 0,  # 0 == retry forever
         sleep=asyncio.sleep,
+        clock=time.monotonic,
     ) -> None:
         self._opener = opener
         self._max_backoff_s = max_backoff_s
         self._max_attempts = max_attempts
         self._sleep = sleep
+        self._clock = clock
         self._stack: AsyncExitStack | None = None
         self._sim = None
         self.reconnects = 0
@@ -73,7 +76,7 @@ class LocationSession:
                 logger.warning("could not clear simulated location: %s", exc)
         await self._close()
 
-    async def set(self, lat: float, lon: float) -> None:
+    async def set(self, lat: float, lon: float, deadline: float | None = None) -> None:
         """
         Push a coordinate, reconnecting and retrying if the device drops out.
 
@@ -100,6 +103,11 @@ class LocationSession:
             if self._max_attempts and attempt > self._max_attempts:
                 raise SessionLost(
                     f"device unreachable after {self._max_attempts} attempts"
+                ) from last_error
+
+            if deadline is not None and self._clock() >= deadline:
+                raise SessionLost(
+                    "device still unreachable at the end of the requested run"
                 ) from last_error
 
             await self._sleep(self._backoff)

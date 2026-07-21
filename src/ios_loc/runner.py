@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass
+
+from ios_loc.session import SessionLost
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -37,6 +42,7 @@ async def run_walk(
     outage costs distance rather than producing a position jump.
     """
     start = clock()
+    deadline = None if duration_s is None else start + duration_s
     next_deadline = start
     ticks = 0
 
@@ -48,7 +54,11 @@ async def run_walk(
 
         fix = walker.advance(tick_s)
         ticks += 1
-        await session.set(fix.lat, fix.lon)
+        try:
+            await session.set(fix.lat, fix.lon, deadline=deadline)
+        except SessionLost:
+            logger.warning("device unreachable; ending the walk at its deadline")
+            break
         if on_fix is not None:
             on_fix(fix)
 
@@ -56,8 +66,14 @@ async def run_walk(
             break
 
         next_deadline += tick_s
-        remaining = next_deadline - clock()
-        await sleep(max(remaining, 0.0))
+        now = clock()
+        if now - next_deadline > tick_s:
+            # We fell more than a whole tick behind, which means session.set()
+            # blocked on a reconnect. Forfeit the lost wall time instead of
+            # firing one tick per lost second: an outage must cost distance,
+            # never produce a position jump.
+            next_deadline = now
+        await sleep(max(next_deadline - now, 0.0))
 
     return WalkStats(
         elapsed_s=walker.elapsed_s,

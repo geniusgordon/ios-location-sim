@@ -205,6 +205,39 @@ async def test_start_retries_a_slow_tunnel():
     assert sim.sets == [(25.0, 121.0)]
 
 
+async def test_set_gives_up_at_its_deadline():
+    class Clock:
+        def __init__(self):
+            self.now = 0.0
+
+        def __call__(self):
+            return self.now
+
+    clock = Clock()
+
+    async def sleep(seconds):
+        clock.now += seconds
+
+    @asynccontextmanager
+    async def opener():
+        raise OSError("device gone")
+        yield  # pragma: no cover
+
+    sim = FakeSim()
+
+    @asynccontextmanager
+    async def first_ok():
+        yield sim
+
+    session = LocationSession(first_ok, sleep=sleep, clock=clock)
+    await session.start()
+    session._opener = opener
+    session._sim = None
+    with pytest.raises(SessionLost):
+        await session.set(25.0, 121.0, deadline=100.0)
+    assert clock.now >= 100.0
+
+
 async def test_start_reraises_the_original_error_when_device_absent():
     # The CLI catches DiscoveryError subclasses, so start() must not swap the type.
     @asynccontextmanager
