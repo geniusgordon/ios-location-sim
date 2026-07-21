@@ -60,3 +60,95 @@ async def test_unknown_udid_raises(monkeypatch):
     monkeypatch.setattr(discovery, "get_tunneld_device_by_udid", by_udid)
     with pytest.raises(NoDeviceFound):
         await find_device("zzz")
+
+
+def _returns(value):
+    """Build an async stand-in that ignores its arguments and returns `value`."""
+
+    async def _fake(*args, **kwargs):
+        return value
+
+    return _fake
+
+
+class FakeCM:
+    """Minimal async context manager, optionally failing on enter."""
+
+    def __init__(self, value=None, fail=False):
+        self.value = value
+        self.fail = fail
+        self.exited = False
+
+    async def __aenter__(self):
+        if self.fail:
+            raise RuntimeError("channel failed to open")
+        return self.value
+
+    async def __aexit__(self, *exc_info):
+        self.exited = True
+        return False
+
+
+async def test_unselected_devices_are_closed(monkeypatch):
+    # get_tunneld_devices() returns already-connected objects; dropping them
+    # without closing leaks one connection per call.
+    a, b, c = FakeRsd("aaa"), FakeRsd("bbb"), FakeRsd("ccc")
+    monkeypatch.setattr(discovery, "get_tunneld_devices", _returns([a, b, c]))
+    chosen = await find_device()
+    assert chosen is a
+    assert b.closed and c.closed, "unselected devices leaked their connections"
+    assert not a.closed, "the selected device must stay open"
+
+
+async def test_open_simulation_yields_sim_then_closes_everything(monkeypatch):
+    rsd = FakeRsd("aaa")
+    sentinel = object()
+    dvt_cm, sim_cm = FakeCM(value="dvt"), FakeCM(value=sentinel)
+    monkeypatch.setattr(discovery, "find_device", _returns(rsd))
+    monkeypatch.setattr(discovery, "DvtProvider", lambda _rsd: dvt_cm)
+    monkeypatch.setattr(discovery, "LocationSimulation", lambda _dvt: sim_cm)
+    async with discovery.open_simulation() as sim:
+        assert sim is sentinel
+    assert sim_cm.exited and dvt_cm.exited
+    assert rsd.closed
+
+
+async def test_open_simulation_closes_rsd_when_dvt_channel_fails(monkeypatch):
+    # Device locked / Developer Mode off / DDI not mounted all surface here.
+    rsd = FakeRsd("aaa")
+    monkeypatch.setattr(discovery, "find_device", _returns(rsd))
+    monkeypatch.setattr(discovery, "DvtProvider", lambda _rsd: FakeCM(fail=True))
+    monkeypatch.setattr(discovery, "LocationSimulation", lambda _dvt: FakeCM())
+    with pytest.raises(RuntimeError):
+        async with discovery.open_simulation():
+            pass
+    assert rsd.closed, "RSD leaked when the DVT channel failed to open"
+
+
+async def test_open_simulation_unwinds_fully_when_simulation_fails(monkeypatch):
+    rsd = FakeRsd("aaa")
+    dvt_cm = FakeCM(value="dvt")
+    monkeypatch.setattr(discovery, "find_device", _returns(rsd))
+    monkeypatch.setattr(discovery, "DvtProvider", lambda _rsd: dvt_cm)
+    monkeypatch.setattr(discovery, "LocationSimulation", lambda _dvt: FakeCM(fail=True))
+    with pytest.raises(RuntimeError):
+        async with discovery.open_simulation():
+            pass
+    assert dvt_cm.exited, "DvtProvider was not unwound"
+    assert rsd.closed, "RSD leaked when LocationSimulation failed to open"
+
+
+async def test_udid_path_reports_tunneld_down(monkeypatch):
+    async def boom(*args, **kwargs):
+        raise TunneldConnectionError()
+
+    monkeypatch.setattr(discovery, "get_tunneld_device_by_udid", boom)
+    with pytest.raises(TunneldNotRunning):
+        await find_device("bbb")
+
+
+async def test_no_devices_error_is_actionable(monkeypatch):
+    # The whole point of this module is that `doctor` prints a remedy, not a trace.
+    monkeypatch.setattr(discovery, "get_tunneld_devices", _returns([]))
+    with pytest.raises(NoDeviceFound, match="Developer Mode"):
+        await find_device()

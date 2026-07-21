@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
 from pymobiledevice3.exceptions import TunneldConnectionError
 from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
 from pymobiledevice3.services.dvt.instruments.location_simulation import LocationSimulation
 from pymobiledevice3.tunneld.api import get_tunneld_device_by_udid, get_tunneld_devices
+
+logger = logging.getLogger(__name__)
 
 TUNNELD_HINT = "start it with:  sudo pymobiledevice3 remote tunneld -d"
 
@@ -42,7 +45,22 @@ async def find_device(udid: str | None = None):
             "tunneld is running but has no active tunnels — "
             "unlock the device, confirm it is trusted, and check Developer Mode is on"
         )
-    return devices[0]
+
+    chosen, *unused = devices
+    if unused:
+        logger.warning(
+            "%d devices are tunnelled; using %s. Pass --udid to choose a specific one.",
+            len(devices),
+            getattr(chosen, "udid", "the first"),
+        )
+    for device in unused:
+        # get_tunneld_devices() connects every tunnel it finds, so devices we are
+        # not using must be closed or each call leaks a live connection.
+        try:
+            await device.close()
+        except Exception as exc:  # noqa: BLE001 - closing must never mask the result
+            logger.debug("could not close unused device: %s", exc)
+    return chosen
 
 
 @asynccontextmanager
