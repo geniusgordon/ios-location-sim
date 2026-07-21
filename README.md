@@ -39,6 +39,19 @@ uv run ios-loc set 25.0330 121.5654
 uv run ios-loc clear
 ```
 
+## Map GUI
+
+```bash
+uv run ios-loc gui               # serves http://127.0.0.1:8765 and opens a browser
+uv run ios-loc gui --no-open --port 9000
+```
+
+The GUI server owns the run: closing it ends the walk, and it cannot see a walk
+started from a terminal. Presets saved from the GUI are written back to
+`config.toml`, so `ios-loc walk <name>` picks them up. Saving rewrites the
+`[presets.*]` tables — comments inside those tables are lost, while everything
+else in the file is preserved byte for byte.
+
 ## Config
 
 `~/.config/ios-loc/config.toml`:
