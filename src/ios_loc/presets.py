@@ -214,12 +214,14 @@ def save_preset(path: pathlib.Path | None, preset: Preset) -> None:
     Everything outside the [presets.*] tables is preserved byte for byte,
     including line endings (a CRLF-authored file stays CRLF); comments inside
     preset tables are not. `preset.profile` is validated against the built-in
-    profiles plus any `[profiles.*]` the file already defines, before any read-
-    modify-write of the target file, so a preset naming an unknown profile
-    leaves the file untouched instead of writing something `load_config` will
-    then reject. The write is atomic (temp + rename) so an interrupted save
-    cannot leave a truncated config behind, and a failed write cleans up its
-    own temp file.
+    profiles plus any `[profiles.*]` the file already defines. The file is read
+    first to load existing presets; if it is already invalid — for example an
+    existing preset references a profile that no longer exists — `save_preset`
+    raises `ConfigError` without writing, and the file must be repaired by hand.
+    If the new preset's profile is unknown, the file is left untouched instead
+    of writing something `load_config` would reject. The write is atomic
+    (temp + rename) so an interrupted save cannot leave a truncated config
+    behind, and a failed write cleans up its own temp file.
     """
     path = pathlib.Path(path) if path else DEFAULT_CONFIG_PATH
     # Validate through the same path the loader uses, before touching the disk.

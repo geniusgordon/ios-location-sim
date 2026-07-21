@@ -196,3 +196,34 @@ def test_a_preset_table_as_the_last_thing_in_the_file_is_fully_dropped(tmp_path)
     profiles, presets = load_config(path)
     assert profiles["jog"].speed == 2.6
     assert set(presets) == {"old", "new"}
+
+
+def test_save_preset_cannot_repair_existing_invalid_config_with_unknown_profile_reference(
+    tmp_path,
+):
+    """Verify documented limitation: save_preset raises ConfigError if the existing
+    config file references a profile that no longer exists, and leaves the file untouched.
+
+    This documents that save_preset validates its *own* preset before writing, but
+    cannot repair a file that is *already* broken. The file must be fixed by hand.
+    """
+    path = tmp_path / "config.toml"
+    # Create a config with a preset that references a profile we'll delete
+    path.write_text(
+        "[presets.old]\n"
+        "waypoints = [[25.0, 121.0], [25.1, 121.1]]\n"
+        'profile = "jog"\n'
+    )
+    broken_bytes = path.read_bytes()
+
+    # Now try to save a valid new preset. This should fail because load_config
+    # will reject the existing preset's unknown profile reference (jog doesn't exist).
+    with pytest.raises(ConfigError) as exc_info:
+        save_preset(path, Preset(name="new", waypoints=[(1.0, 2.0), (3.0, 4.0)]))
+
+    # Verify the error names the offending entry
+    assert "preset" in str(exc_info.value).lower()
+    assert "old" in str(exc_info.value)
+
+    # Verify the file is left byte-identical
+    assert path.read_bytes() == broken_bytes
