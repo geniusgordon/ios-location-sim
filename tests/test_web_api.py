@@ -215,6 +215,31 @@ def test_app_shutdown_with_no_walk_running_does_not_raise(tmp_path):
     # Reaching here without an exception is the assertion.
 
 
+def test_an_out_of_range_latitude_is_a_400_not_a_started_walk(context):
+    """The API's ad-hoc waypoint path must enforce the same latitude/longitude
+    range as presets and the CLI (Finding 3) -- routed through the shared
+    `resolve_walk`, not a fourth copy of the check."""
+    client, *_ = context
+    response = client.post(
+        "/api/walk",
+        json={"waypoints": [[999.0, 121.0], [25.1, 121.1]]},
+    )
+    assert response.status_code == 400
+    assert client.get("/api/walk").json()["state"] == "idle"
+
+
+def test_a_malformed_waypoint_pair_is_a_422_not_a_500(context):
+    """A 3-element (or 1-element) coordinate pair must fail Pydantic validation
+    before any handler runs, not raise a bare ValueError (Finding 4)."""
+    client, *_ = context
+    for path in ("/api/walk", "/api/route", "/api/presets"):
+        body = {"waypoints": [[1.0, 2.0, 3.0], [4.0, 5.0]]}
+        if path == "/api/presets":
+            body["name"] = "bad"
+        response = client.post(path, json=body)
+        assert response.status_code == 422, f"{path}: {response.status_code}"
+
+
 def test_a_device_failure_at_start_is_a_503_with_the_real_cause(tmp_path):
     class FailingSession(FakeSession):
         async def start(self, attempts=3):

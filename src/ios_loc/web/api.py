@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import logging
 import pathlib
 from contextlib import asynccontextmanager
@@ -11,7 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
-from ios_loc.presets import ConfigError, Preset, load_config, save_preset
+from ios_loc.presets import ConfigError, Preset, load_config, resolve_walk, save_preset
 from ios_loc.routing import RoutingError
 from ios_loc.session import _PROGRAMMING_ERRORS
 from ios_loc.web.models import (
@@ -101,7 +100,38 @@ def create_app(
 
     @app.post("/api/walk", response_model=WalkStatus)
     async def start_walk(body: StartRequest) -> WalkStatus:
-        spec = _build_spec(body, config_path)
+        profiles, presets = _config()
+        try:
+            resolved = resolve_walk(
+                preset=body.preset,
+                waypoints=body.waypoints,
+                profile=body.profile,
+                speed=body.speed,
+                costing=body.costing,
+                loop=body.loop,
+                profiles=profiles,
+                presets=presets,
+            )
+        except ConfigError as exc:
+            # An unknown preset name is a 404 (the named thing does not exist);
+            # everything else resolve_walk rejects -- an unknown profile, a bad
+            # request shape, an out-of-range coordinate, an over-ceiling speed
+            # -- is the client's fault, a 400.
+            detail = str(exc)
+            status_code = 404 if detail.startswith("unknown preset") else 400
+            raise HTTPException(status_code=status_code, detail=detail) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        spec = StartSpec(
+            waypoints=resolved.waypoints,
+            costing=resolved.costing,
+            profile=resolved.profile,
+            loop=resolved.loop,
+            duration_s=body.duration_s,
+            scatter_m=body.scatter_m,
+            preset_name=resolved.preset_name,
+        )
         try:
             return await service.start(spec)
         except WalkAlreadyRunning as exc:
@@ -138,53 +168,3 @@ def create_app(
         app.mount("/", StaticFiles(directory=static_dir, html=True), name="ui")
 
     return app
-
-
-def _build_spec(body: StartRequest, config_path: pathlib.Path | None) -> StartSpec:
-    """Turn a request into a validated StartSpec, or raise HTTPException(400)."""
-    if body.preset and body.waypoints:
-        raise HTTPException(status_code=400, detail="pass either preset or waypoints, not both")
-    if not body.preset and not body.waypoints:
-        raise HTTPException(status_code=400, detail="a walk needs a preset or at least 2 waypoints")
-
-    try:
-        profiles, presets = load_config(config_path)
-    except ConfigError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    preset_name = None
-    if body.preset:
-        if body.preset not in presets:
-            raise HTTPException(status_code=404, detail=f"unknown preset {body.preset!r}")
-        chosen = presets[body.preset]
-        waypoints = list(chosen.waypoints)
-        profile_name = body.profile or chosen.profile
-        loop = chosen.loop if body.loop is None else body.loop
-        preset_name = chosen.name
-    else:
-        if len(body.waypoints) < 2:
-            raise HTTPException(status_code=400, detail="a route needs at least 2 waypoints")
-        waypoints = [(lat, lon) for lat, lon in body.waypoints]
-        profile_name = body.profile or "walk"
-        loop = bool(body.loop)
-
-    if profile_name not in profiles:
-        raise HTTPException(status_code=400, detail=f"unknown profile {profile_name!r}")
-    profile = profiles[profile_name]
-
-    if body.speed is not None:
-        try:
-            profile = dataclasses.replace(profile, speed=body.speed)
-        except ValueError as exc:
-            # Includes the 20 km/h ceiling — never bypass this validation.
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    return StartSpec(
-        waypoints=waypoints,
-        costing=body.costing or profile.costing,
-        profile=profile,
-        loop=loop,
-        duration_s=body.duration_s,
-        scatter_m=body.scatter_m,
-        preset_name=preset_name,
-    )

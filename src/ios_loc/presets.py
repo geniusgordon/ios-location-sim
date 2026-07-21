@@ -90,6 +90,13 @@ DEFAULT_PROFILES: dict[str, Profile] = {
 }
 
 
+def _check_coord_range(lat: float, lon: float, label: str) -> None:
+    """Latitude/longitude range shared by every waypoint source (preset TOML,
+    CLI `--via`, ad-hoc API waypoints)."""
+    if not -90.0 <= lat <= 90.0 or not -180.0 <= lon <= 180.0:
+        raise ValueError(f"{label} out of range: latitude {lat}, longitude {lon}")
+
+
 def _parse_waypoints(raw: object, preset_name: str) -> list[Coord]:
     """Validate a preset's waypoint list, naming the preset in every error."""
     if not isinstance(raw, list) or len(raw) < 2:
@@ -110,11 +117,10 @@ def _parse_waypoints(raw: object, preset_name: str) -> list[Coord]:
             raise ConfigError(
                 f"preset {preset_name!r}: waypoint {index} is not numeric: {item!r}"
             ) from exc
-        if not -90.0 <= lat <= 90.0 or not -180.0 <= lon <= 180.0:
-            raise ConfigError(
-                f"preset {preset_name!r}: waypoint {index} out of range: "
-                f"latitude {lat}, longitude {lon}"
-            )
+        try:
+            _check_coord_range(lat, lon, f"preset {preset_name!r}: waypoint {index}")
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from exc
         coords.append((lat, lon))
     return coords
 
@@ -167,6 +173,84 @@ def load_config(
         )
 
     return profiles, presets
+
+
+@dataclass(frozen=True)
+class ResolvedWalk:
+    """The concrete, ready-to-run shape of a walk request."""
+
+    waypoints: list[Coord]
+    costing: str
+    profile: Profile
+    loop: bool
+    preset_name: str | None = None
+
+
+def resolve_walk(
+    *,
+    preset: str | None,
+    waypoints: list[Coord] | None,
+    profile: str | None,
+    speed: float | None,
+    costing: str | None,
+    loop: bool | None,
+    profiles: dict[str, Profile],
+    presets: dict[str, Preset],
+) -> ResolvedWalk:
+    """Resolve a preset name or ad-hoc waypoints, plus overrides, into a
+    concrete `ResolvedWalk`. This is the one rule shared by `ios-loc walk` and
+    `POST /api/walk` — both parse their own inputs (the CLI's `--via 'lat,lon'`
+    strings, the API's JSON body) and both present failures their own way, but
+    the resolution rule itself — preset XOR waypoints, profile/speed/costing/
+    loop overrides, the 20 km/h ceiling — lives only here.
+
+    Raises `ConfigError` for an unknown preset or profile name, `ValueError`
+    for anything else invalid: neither/both of preset and waypoints, too few
+    waypoints, an out-of-range coordinate, or an over-ceiling speed.
+
+    Deliberately does not know about routing: whether a `--loop`/`loop=True`
+    route actually returns to its start is only knowable after the route is
+    built, so that check stays with each caller, after it calls this.
+    """
+    if preset and waypoints:
+        raise ValueError("pass either a preset name or waypoints, not both")
+    if not preset and not waypoints:
+        raise ValueError("a walk needs a preset or at least 2 waypoints")
+
+    preset_name = None
+    if preset:
+        if preset not in presets:
+            raise ConfigError(f"unknown preset {preset!r}")
+        chosen = presets[preset]
+        resolved_waypoints = list(chosen.waypoints)
+        profile_name = profile or chosen.profile
+        resolved_loop = chosen.loop if loop is None else loop
+        preset_name = chosen.name
+    else:
+        assert waypoints is not None  # guaranteed by the guard above
+        if len(waypoints) < 2:
+            raise ValueError("a route needs at least 2 waypoints")
+        for index, (lat, lon) in enumerate(waypoints):
+            _check_coord_range(lat, lon, f"waypoint {index}")
+        resolved_waypoints = list(waypoints)
+        profile_name = profile or "walk"
+        resolved_loop = bool(loop)
+
+    if profile_name not in profiles:
+        raise ConfigError(f"unknown profile {profile_name!r}")
+    resolved_profile = profiles[profile_name]
+
+    if speed is not None:
+        # Includes the 20 km/h ceiling — never bypass this validation.
+        resolved_profile = replace(resolved_profile, speed=speed)
+
+    return ResolvedWalk(
+        waypoints=resolved_waypoints,
+        costing=costing or resolved_profile.costing,
+        profile=resolved_profile,
+        loop=resolved_loop,
+        preset_name=preset_name,
+    )
 
 
 # A TOML table header's bracketed content is a dotted sequence of bare keys

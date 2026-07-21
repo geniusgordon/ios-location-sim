@@ -6,6 +6,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from ios_loc.path import Coord
+
 from ios_loc.presets import Preset
 from ios_loc.runner import WalkStats
 from ios_loc.walker import Fix
@@ -82,13 +84,13 @@ class PresetsListOut(BaseModel):
 
 class PresetIn(BaseModel):
     name: str = Field(min_length=1)
-    waypoints: list[list[float]] = Field(min_length=2)
+    waypoints: list[Coord] = Field(min_length=2)
     profile: str = "walk"
     loop: bool = False
 
 
 class RouteRequest(BaseModel):
-    waypoints: list[list[float]] = Field(min_length=2)
+    waypoints: list[Coord] = Field(min_length=2)
     costing: str = "pedestrian"
 
 
@@ -102,14 +104,17 @@ class StartRequest(BaseModel):
     """Either `preset` or `waypoints` — the API rejects both and neither."""
 
     preset: str | None = None
-    waypoints: list[list[float]] | None = None
+    waypoints: list[Coord] | None = None
     profile: str | None = None
     speed: float | None = None
     costing: str | None = None
     # None means "inherit the preset's setting"; the ad-hoc branch coerces it.
     loop: bool | None = None
-    duration_s: float | None = None
-    scatter_m: float = 3.0
+    # A run needs at least one tick to produce anything; a zero/negative value
+    # would yield an instant "finished" run with nothing behind it.
+    duration_s: float | None = Field(default=None, gt=0)
+    # Anything much larger puts emitted positions kilometres off the route.
+    scatter_m: float = Field(default=3.0, ge=0, le=100)
 
 
 class WalkStatus(BaseModel):

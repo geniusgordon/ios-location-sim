@@ -15,7 +15,7 @@ import uvicorn
 
 from ios_loc.discovery import DiscoveryError, find_device, open_simulation
 from ios_loc.path import Coord
-from ios_loc.presets import ConfigError, load_config
+from ios_loc.presets import ConfigError, load_config, resolve_walk
 from ios_loc.routing import RoutingError, ValhallaClient
 from ios_loc.runner import run_walk
 from ios_loc.session import LocationSession, SessionLost
@@ -181,36 +181,30 @@ def walk(
     except ConfigError as exc:
         _fail(f"config error: {exc}")
 
-    if preset:
-        if via:
-            _fail("pass either a preset name or --via waypoints, not both")
-        if preset not in presets:
-            _fail(f"unknown preset {preset!r}; try: ios-loc presets list")
-        chosen = presets[preset]
-        waypoints = chosen.waypoints
-        profile_name = profile or chosen.profile
-        loop = chosen.loop if loop is None else loop
-    else:
-        if not via or len(via) < 2:
-            _fail("a route needs at least 2 waypoints — pass --via 'lat,lon' twice")
-        try:
-            waypoints = [parse_waypoint(v) for v in via]
-        except ValueError as exc:
-            _fail(str(exc))
-        profile_name = profile or "walk"
-        loop = bool(loop)
+    try:
+        parsed_via = [parse_waypoint(v) for v in via] if via else None
+    except ValueError as exc:
+        _fail(str(exc))
 
-    if profile_name not in profiles:
-        _fail(f"unknown profile {profile_name!r}; try: ios-loc presets list")
-    selected = profiles[profile_name]
+    try:
+        resolved = resolve_walk(
+            preset=preset,
+            waypoints=parsed_via,
+            profile=profile,
+            speed=speed,
+            costing=costing,
+            loop=loop,
+            profiles=profiles,
+            presets=presets,
+        )
+    except ConfigError as exc:
+        _fail(f"{exc}; try: ios-loc presets list")
+    except ValueError as exc:
+        _fail(str(exc))
 
-    if speed is not None:
-        from dataclasses import replace
-
-        try:
-            selected = replace(selected, speed=speed)
-        except ValueError as exc:
-            _fail(str(exc))
+    waypoints = resolved.waypoints
+    selected = resolved.profile
+    loop = resolved.loop
 
     duration_s = None
     if duration:
@@ -230,7 +224,7 @@ def walk(
 
     try:
         client = ValhallaClient(offline=offline)
-        path = client.route(waypoints, costing=costing or selected.costing)
+        path = client.route(waypoints, costing=resolved.costing)
     except (RoutingError, ValueError) as exc:
         _fail(f"routing failed: {exc}")
 

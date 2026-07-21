@@ -71,9 +71,16 @@
           },
           "waypoints": {
             "items": {
-              "items": {
-                "type": "number"
-              },
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
               "type": "array"
             },
             "minItems": 2,
@@ -160,9 +167,16 @@
           },
           "waypoints": {
             "items": {
-              "items": {
-                "type": "number"
-              },
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
               "type": "array"
             },
             "minItems": 2,
@@ -222,6 +236,7 @@
           "duration_s": {
             "anyOf": [
               {
+                "exclusiveMinimum": 0.0,
                 "type": "number"
               },
               {
@@ -265,6 +280,8 @@
           },
           "scatter_m": {
             "default": 3.0,
+            "maximum": 100.0,
+            "minimum": 0.0,
             "title": "Scatter M",
             "type": "number"
           },
@@ -283,9 +300,16 @@
             "anyOf": [
               {
                 "items": {
-                  "items": {
-                    "type": "number"
-                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
                   "type": "array"
                 },
                 "type": "array"
