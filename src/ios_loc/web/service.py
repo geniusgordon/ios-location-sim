@@ -75,6 +75,12 @@ class WalkService:
         self._state = WalkState.IDLE
         self._error: str | None = None
         self._subscribers: set[asyncio.Queue] = set()
+        # Serializes start()/stop() against each other end-to-end -- including
+        # the await on session.start() and the teardown -- so neither method
+        # can observe or mutate self._run mid-transition. _drive() never
+        # acquires this lock, so stop() awaiting a cancelled run.task while
+        # holding it cannot deadlock.
+        self._lock = asyncio.Lock()
 
     # -- public ----------------------------------------------------------
 
@@ -96,53 +102,63 @@ class WalkService:
         )
 
     async def start(self, spec: StartSpec) -> WalkStatus:
-        run = self._run
-        if run is not None and run.task is not None and not run.task.done():
-            raise WalkAlreadyRunning("a walk is already running")
+        async with self._lock:
+            run = self._run
+            if run is not None and run.task is not None and not run.task.done():
+                raise WalkAlreadyRunning("a walk is already running")
 
-        self._state = WalkState.STARTING
-        self._error = None
-        # RouteClient.route() is synchronous `requests`; keep it off the loop.
-        path = await asyncio.to_thread(self._route_client.route, spec.waypoints, spec.costing)
+            self._state = WalkState.STARTING
+            self._error = None
+            # RouteClient.route() is synchronous `requests`; keep it off the loop.
+            path = await asyncio.to_thread(
+                self._route_client.route, spec.waypoints, spec.costing
+            )
 
-        walker = Walker(path, spec.profile, loop=spec.loop, rng=self._rng, scatter_m=spec.scatter_m)
-        session = self._session_factory()
-        run = _Run(
-            walker=walker,
-            session=session,
-            path=path,
-            spec=spec,
-            trail=collections.deque(maxlen=self._trail_len),
-        )
-        self._run = run
+            walker = Walker(
+                path, spec.profile, loop=spec.loop, rng=self._rng, scatter_m=spec.scatter_m
+            )
+            session = self._session_factory()
+            run = _Run(
+                walker=walker,
+                session=session,
+                path=path,
+                spec=spec,
+                trail=collections.deque(maxlen=self._trail_len),
+            )
+            self._run = run
 
-        try:
-            await session.start()
-        except BaseException:
-            self._run = None
-            self._state = WalkState.IDLE
-            raise
+            try:
+                await session.start()
+            except BaseException:
+                self._run = None
+                self._state = WalkState.IDLE
+                raise
 
-        self._state = WalkState.WALKING
-        run.task = asyncio.create_task(self._drive(run), name="ios-loc-walk")
-        self._broadcast({"type": "state", "state": self._state.value, "error": None})
-        return self.status()
+            self._state = WalkState.WALKING
+            run.task = asyncio.create_task(self._drive(run), name="ios-loc-walk")
+            self._broadcast({"type": "state", "state": self._state.value, "error": None})
+            return self.status()
 
     async def stop(self) -> None:
-        run = self._run
-        if run is None:
-            return
-        if run.task is not None:
-            run.task.cancel()
-            try:
-                await run.task
-            except asyncio.CancelledError:
-                pass
-        await self._teardown(run)
-        self._run = None
-        self._state = WalkState.IDLE
-        self._error = None
-        self._broadcast({"type": "state", "state": self._state.value, "error": None})
+        async with self._lock:
+            run = self._run
+            if run is None:
+                return
+            task = run.task
+            # Publish the "stopped" state before awaiting anything further, so
+            # a second concurrent stop() (queued on the lock behind us) sees
+            # self._run is already None and returns without broadcasting again.
+            self._run = None
+            self._state = WalkState.IDLE
+            self._error = None
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except BaseException:  # noqa: BLE001 -- _drive already logs/reports
+                    pass
+            await self._teardown(run)
+            self._broadcast({"type": "state", "state": self._state.value, "error": None})
 
     async def wait_finished(self) -> None:
         """Await the current run's completion. Returns immediately when idle."""
