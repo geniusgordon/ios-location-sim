@@ -1,3 +1,4 @@
+import pathlib
 import time
 
 import pytest
@@ -515,3 +516,17 @@ def test_only_the_snapshot_carries_route_and_trail(context):
         assert message["type"] in ("fix", "state")
         assert "route" not in message
         assert "trail" not in message
+
+
+def test_built_ui_is_served_and_does_not_shadow_the_api(tmp_path):
+    """The committed build must load at / while /api/walk still returns JSON.
+
+    StaticFiles(html=True) mounted at "/" will happily swallow every route
+    registered after it; api.py mounts it last on purpose, and this pins that.
+    """
+    import ios_loc.web.api as web_api
+
+    static = pathlib.Path(web_api.__file__).parent / "static"
+    index = (static / "index.html").read_text(encoding="utf-8")
+    assert "<div id=\"root\">" in index, "static/index.html is not the built React app"
+    assert "/assets/" in index, "built index.html does not reference a hashed bundle"

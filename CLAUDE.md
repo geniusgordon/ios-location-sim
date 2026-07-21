@@ -12,10 +12,12 @@ used to walk/cycle routes for Pikmin Bloom. Python 3.13, `uv`-managed, package a
 
 ```bash
 uv sync                              # install
-uv run pytest -q                     # full suite (180 tests, ~2s, no device/network needed)
+uv run pytest -q                     # full suite (193 tests, ~2s, no device/network needed)
 uv run pytest tests/test_walker.py::test_name -q   # single test
 uv run ios-loc --help
 uv run python scripts/export_openapi.py            # regenerate src/ios_loc/web/ui/api-schema.json
+cd src/ios_loc/web/ui && pnpm test run   # frontend pure-logic tests
+cd src/ios_loc/web/ui && pnpm build      # rebuild the committed bundle in web/static/
 ```
 
 There is no linter or formatter configured. Every test runs under a 60s `pytest-timeout`
@@ -43,14 +45,14 @@ run can be tested in milliseconds.
 | `discovery.py` | tunneld lookup → `LocationSimulation` async context manager | — |
 | `runner.py` | The async tick loop joining Walker → LocationSession | — |
 | `cli.py` | Typer wiring only; no behaviour | — |
-| `web/` | Local GUI: `WalkService` (run lifecycle + broadcast), FastAPI wiring, built UI assets | — (imports everything; nothing imports it) |
+| `web/` | Local GUI: `WalkService` (run lifecycle + broadcast), FastAPI wiring, built UI assets in `web/static/`, React source in `web/ui/` | — (imports everything; nothing imports it) |
 
 `runner.run_walk`, `session.LocationSession` and `walker.Walker` all take injectable
 `clock` / `sleep` / `rng` / `poster` / `opener`, so tests drive virtual time and fake
 devices. Preserve those seams when editing.
 
 `src/ios_loc/web/ui/api-schema.json` is the OpenAPI schema exported from the FastAPI
-app; a drift test fails if it goes stale. The frontend (plan 2) generates its
+app; a drift test fails if it goes stale. The frontend generates its
 TypeScript types from this file rather than hand-copying the API shape.
 
 ## Invariants that are load-bearing
@@ -90,6 +92,16 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   `NameError`, `ImportError`) rather than mapping them to a retryable 503 — same
   reasoning as `session.set()`: a bug should fail loudly, not look like a transient
   hardware hiccup a client should retry.
+- **A 1 Hz fix must not re-render the map or the sidebar.** The frontend store
+  (`web/ui/src/state/walkStore.ts`) has three channels: telemetry (every
+  message, status bar only), meta (only when state/route/preset actually
+  change), and fix (imperative, the map's dot-mover). Reading telemetry from a
+  component above the status bar re-renders the MapLibre subtree once a second.
+- **`[lat, lon]` on the wire, `[lng, lat]` in MapLibre.** `MapView.toLngLat` is
+  the only place that flips a pair. A second flip anywhere else produces
+  plausible-looking coordinates in the wrong hemisphere, with no error.
+- **`web/static/` is committed build output.** A change under `web/ui/` that is
+  not followed by `pnpm build` ships nothing.
 
 ## Config
 
