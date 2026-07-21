@@ -8,11 +8,16 @@ import { useWalkMeta, walkStore } from "@/hooks/useWalkStream"
 
 /**
  * THE conversion point. The API speaks [lat, lon]; MapLibre and GeoJSON speak
- * [lng, lat]. Every coordinate entering MapLibre goes through here, and no other
- * module flips a pair.
+ * [lng, lat]. Every coordinate entering MapLibre goes through here, and
+ * `fromLngLat` below is the only other place a pair gets flipped.
  */
 export function toLngLat(point: LatLon): [number, number] {
   return [point[1], point[0]]
+}
+
+/** The inverse of `toLngLat`: MapLibre's {lng, lat} back to wire order. */
+export function fromLngLat(lngLat: { lng: number; lat: number }): LatLon {
+  return [lngLat.lat, lngLat.lng]
 }
 
 const OSM_STYLE: maplibregl.StyleSpecification = {
@@ -152,7 +157,7 @@ export default function MapView(props: MapViewProps) {
         handlers.current.onWaypointClick(Number(hit.properties?.index ?? 0))
         return
       }
-      handlers.current.onMapClick([event.lngLat.lat, event.lngLat.lng])
+      handlers.current.onMapClick(fromLngLat(event.lngLat))
     })
 
     // Drag a waypoint: grab on mousedown over a dot, move with the pointer,
@@ -166,15 +171,24 @@ export default function MapView(props: MapViewProps) {
     })
     m.on("mousemove", (event) => {
       if (dragging === null) return
-      handlers.current.onWaypointDrag(dragging, [event.lngLat.lat, event.lngLat.lng])
+      handlers.current.onWaypointDrag(dragging, fromLngLat(event.lngLat))
     })
-    m.on("mouseup", () => {
+    const endDrag = () => {
       if (dragging === null) return
       dragging = null
       m.getCanvas().style.cursor = ""
-    })
+    }
+    m.on("mouseup", endDrag)
+    // A release outside the canvas -- over the sidebar, past the window edge --
+    // never reaches the map, and a window blur mid-drag never produces a
+    // mouseup at all. Without these the waypoint keeps following the cursor
+    // with no button held.
+    window.addEventListener("mouseup", endDrag)
+    window.addEventListener("blur", endDrag)
 
     return () => {
+      window.removeEventListener("mouseup", endDrag)
+      window.removeEventListener("blur", endDrag)
       m.remove()
       map.current = null
       setReady(false)
