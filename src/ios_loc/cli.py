@@ -8,8 +8,10 @@ import pathlib
 import random
 import re
 import sys
+import webbrowser
 
 import typer
+import uvicorn
 
 from ios_loc.discovery import DiscoveryError, find_device, open_simulation
 from ios_loc.path import Coord
@@ -284,3 +286,50 @@ def walk(
             f"FAILED: {exc}\n"
             "Check the device is unlocked, trusted, and has Developer Mode enabled."
         )
+
+
+DEFAULT_STATIC_DIR = pathlib.Path(__file__).parent / "web" / "static"
+
+
+def build_gui_app(
+    *,
+    config: pathlib.Path | None,
+    offline: bool,
+    udid: str | None,
+    static_dir: pathlib.Path | None = DEFAULT_STATIC_DIR,
+):
+    """Assemble the GUI app. Separated from `gui` so tests need no server."""
+    from ios_loc.web.api import create_app
+    from ios_loc.web.service import WalkService
+
+    route_client = ValhallaClient(offline=offline)
+    service = WalkService(
+        route_client=route_client,
+        session_factory=lambda: LocationSession(lambda: open_simulation(udid)),
+    )
+    return create_app(
+        service=service,
+        route_client=route_client,
+        config_path=config,
+        offline=offline,
+        static_dir=static_dir,
+    )
+
+
+@app.command()
+def gui(
+    host: str = typer.Option("127.0.0.1", help="Bind address. Leave as loopback unless you mean it."),
+    port: int = typer.Option(8765, help="Port to serve on."),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open a browser on start."),
+    offline: bool = typer.Option(False, "--offline", help="Fail routing that is not cached."),
+    udid: str = typer.Option(None, help="Target a specific device UDID."),
+    config: pathlib.Path = typer.Option(None, help="Path to config.toml."),
+) -> None:
+    """Serve the map GUI on localhost."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+    application = build_gui_app(config=config, offline=offline, udid=udid)
+    url = f"http://{host}:{port}"
+    typer.echo(f"serving {url}")
+    if open_browser:
+        webbrowser.open(url)
+    uvicorn.run(application, host=host, port=port, log_level="info")
