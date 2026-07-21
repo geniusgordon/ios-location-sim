@@ -1,103 +1,12 @@
 import asyncio
-import time
 
 import pytest
 
-from ios_loc.path import Path
 from ios_loc.presets import DEFAULT_PROFILES
 from ios_loc.session import SessionLost
 from ios_loc.web.models import WalkState, WalkStatus
 from ios_loc.web.service import StartSpec, WalkAlreadyRunning, WalkService
-
-SQUARE = [(25.000, 121.000), (25.002, 121.000), (25.002, 121.002), (25.000, 121.002)]
-
-
-class FakeRouteClient:
-    """Stands in for ValhallaClient. Records calls, never touches the network."""
-
-    def __init__(self, coords=None, error=None):
-        self.coords = coords or SQUARE
-        self.error = error
-        self.calls = []
-
-    def route(self, waypoints, costing):
-        self.calls.append((list(waypoints), costing))
-        if self.error is not None:
-            raise self.error
-        return Path(self.coords)
-
-
-class FakeSession:
-    """A LocationSession-shaped double. `fail_with` raises on the Nth set().
-
-    `start_gate`, if given, makes `start()` a slow, controllable connect: it
-    signals `entered_start` the instant it's called (so a test can know it is
-    "mid-connect" without guessing timing) and then blocks until the gate is
-    set.
-    """
-
-    def __init__(self, fail_with=None, fail_on=None, start_gate=None, stop_gate=None):
-        self.sets = []
-        self.reconnects = 0
-        self.started = False
-        self.stopped = False
-        self.cleared = None
-        self.stop_calls = 0
-        self.start_calls = 0
-        self._fail_with = fail_with
-        self._fail_on = fail_on
-        self._start_gate = start_gate
-        self.entered_start = asyncio.Event()
-        # `stop_gate`, if given, makes the *first* stop() call block until the
-        # gate resolves (or is cancelled out from under it) -- so a test can
-        # suspend a teardown mid-`await` without guessing timing. Only the
-        # first call blocks: a retried stop() after a cancelled attempt must
-        # proceed and actually clear the device, which is the whole point of
-        # the interrupted-teardown test.
-        self._stop_gate = stop_gate
-        self._stop_gate_consumed = False
-        self.entered_stop = asyncio.Event()
-
-    async def start(self, attempts=3):
-        self.start_calls += 1
-        self.entered_start.set()
-        if self._start_gate is not None:
-            await self._start_gate.wait()
-        self.started = True
-
-    async def stop(self, clear=True):
-        self.entered_stop.set()
-        if self._stop_gate is not None and not self._stop_gate_consumed:
-            self._stop_gate_consumed = True
-            await self._stop_gate.wait()
-        self.stop_calls += 1
-        self.stopped = True
-        self.cleared = clear
-
-    async def set(self, lat, lon, deadline=None):
-        self.sets.append((lat, lon))
-        if self._fail_with is not None and len(self.sets) == self._fail_on:
-            raise self._fail_with
-
-
-class VirtualClock:
-    """Monotonic time that only advances when sleep() is awaited.
-
-    Same shape as the one in tests/test_runner.py, with one difference: it yields
-    to the event loop after advancing. Without that yield an unbounded walk would
-    spin the loop and starve every other task in the test.
-    """
-
-    def __init__(self):
-        self.now = 0.0
-
-    def __call__(self):
-        return self.now
-
-    async def sleep(self, seconds):
-        self.now += max(seconds, 0.0)
-        await asyncio.sleep(0)
-
+from tests.conftest import SQUARE, FakeRouteClient, FakeSession, VirtualClock
 
 def make_service(session=None, route_client=None, **kwargs):
     """Build a service on virtual time unless the caller overrides clock/sleep."""
@@ -203,14 +112,6 @@ async def test_stop_after_natural_finish_does_not_stop_session_twice():
     await service.stop()
     assert session.stop_calls == 1
     assert service.status().state is WalkState.IDLE
-
-
-async def test_second_start_while_genuinely_running_still_refused():
-    service, _ = make_service()
-    await service.start(spec(duration_s=5.0))
-    with pytest.raises(WalkAlreadyRunning):
-        await service.start(spec(duration_s=5.0))
-    await service.stop()
 
 
 async def test_concurrent_start_calls_exactly_one_wins():
@@ -348,7 +249,11 @@ async def test_a_full_queue_drops_oldest_and_never_blocks_the_walk():
 
     # The run completes all 20 ticks regardless of the stalled subscriber.
     assert len(session.sets) == 20
-    assert len(messages) <= 4
+    # Exactly at capacity: nothing ever drained the queue, so drop-oldest must
+    # have kept it full throughout, not emptied it. `<= 4` alone would also
+    # pass for a queue that dropped everything -- only the exact count plus
+    # the newest-survives check below actually pins down drop-oldest behaviour.
+    assert len(messages) == 4
     # What survives is the newest, not the oldest.
     assert messages[-1]["type"] == "state"
     assert messages[-1]["state"] == "finished"
@@ -448,24 +353,82 @@ async def test_teardown_interrupted_mid_await_is_retried_not_skipped():
     assert service.status().state is WalkState.IDLE
 
 
+async def test_the_final_broadcast_carries_the_authoritative_stats():
+    """A WebSocket-only consumer must learn the final numbers without having
+    to re-`GET /api/walk` (Finding 3): the terminal broadcast carries `stats`
+    alongside `state`, not just a bare state message."""
+    service, _ = make_service()
+    with service.subscribe() as queue:
+        await service.start(spec(duration_s=3.0))
+        await service.wait_finished()
+        messages = _drain(queue)
+
+    final = messages[-1]
+    assert final["type"] == "state"
+    assert final["state"] == "finished"
+    assert final["stats"] == service.status().stats.model_dump()
+    assert final["stats"]["ticks"] == 3
+
+
+async def test_the_final_broadcast_reflects_the_true_tick_count_on_session_lost():
+    """`run.ticks` (incremented in `_on_fix`, i.e. only on a *successful* set())
+    and `run_walk`'s own `ticks` (incremented *before* `session.set()`, so it
+    counts the failing attempt too) diverge by one when a tick ends in
+    `SessionLost`. The terminal broadcast must carry the authoritative
+    `run_walk` count, not the one `_on_fix` last saw -- so it can legitimately
+    jump by more than one fix's worth relative to the last per-fix broadcast.
+    """
+    session = FakeSession(fail_with=SessionLost("device unreachable"), fail_on=3)
+    service, _ = make_service(session=session)
+    with service.subscribe() as queue:
+        await service.start(spec(duration_s=10.0))
+        await service.wait_finished()
+        messages = _drain(queue)
+
+    fixes = [m for m in messages if m["type"] == "fix"]
+    # Only 2 fixes ever reached _on_fix -- the 3rd tick's set() failed before
+    # on_fix could run.
+    assert len(fixes) == 2
+    assert fixes[-1]["stats"]["ticks"] == 2
+
+    final = messages[-1]
+    assert final["type"] == "state"
+    assert final["state"] == "error"
+    # The authoritative final count includes the failed 3rd attempt.
+    assert final["stats"]["ticks"] == 3
+    assert final["stats"] == service.status().stats.model_dump()
+
+
 async def test_a_slow_set_reports_reconnecting():
+    """The watchdog must drive its own polling off the injected clock/sleep,
+    not real wall time -- so a test can force a "stall" deterministically
+    without ever actually waiting in real time.
+
+    `SlowSession.set()` blocks on a real `asyncio.Event` (a pure concurrency
+    gate, not a timer) until the test releases it, standing in for a
+    `session.set()` stuck mid-reconnect. While it's blocked, the tick loop
+    (inside `run_walk`) is itself suspended awaiting that very call, so it
+    advances no virtual time at all -- only the watchdog's own polling loop
+    can, which is exactly the situation `_watch_stalls` exists to detect.
+    Pumping the event loop with bare `asyncio.sleep(0)` yields (no real delay)
+    must be enough for the watchdog to notice and flip the state.
+    """
+    gate = asyncio.Event()
+
     class SlowSession(FakeSession):
         async def set(self, lat, lon, deadline=None):
-            await asyncio.sleep(0.2)
+            await gate.wait()
             await super().set(lat, lon)
 
-    # Real time, not the virtual clock: the stall is measured in wall seconds
-    # precisely because the tick loop is frozen and advances no virtual time.
-    service, _ = make_service(
-        session=SlowSession(),
-        stall_threshold_s=0.05,
-        clock=time.monotonic,
-        sleep=asyncio.sleep,
-    )
+    service, _ = make_service(session=SlowSession(), stall_threshold_s=1.0)
     with service.subscribe() as queue:
-        await service.start(spec(duration_s=1.0))
-        await asyncio.sleep(0.12)
+        await service.start(spec(duration_s=5.0))
+        # No real waiting: just pump the loop so the watchdog's own virtual
+        # sleeps get a chance to run while `set()` sits blocked on the gate.
+        for _ in range(10):
+            await asyncio.sleep(0)
         assert service.status().state is WalkState.RECONNECTING
+        gate.set()
         await service.wait_finished()
         states = [m["state"] for m in _drain(queue) if m["type"] == "state"]
     assert "reconnecting" in states

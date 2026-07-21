@@ -64,6 +64,13 @@ class _WatchedSession:
         self._clock = clock
         self.lost_error: BaseException | None = None
         self.inflight_since: float | None = None
+        # Signals the watchdog that a `set()` call has just started, so it can
+        # wake up and start polling. It carries no timing information itself --
+        # only `inflight_since` does -- it exists purely so the watchdog can
+        # block (consuming no clock time at all) instead of polling on a fixed
+        # period for the entire life of the walk, which would race the tick
+        # loop's own use of the same injected clock/sleep (see `_watch_stalls`).
+        self._inflight_event = asyncio.Event()
 
     @property
     def reconnects(self) -> int:
@@ -77,6 +84,7 @@ class _WatchedSession:
 
     async def set(self, lat: float, lon: float, deadline=None) -> None:
         self.inflight_since = self._clock()
+        self._inflight_event.set()
         try:
             await self._inner.set(lat, lon, deadline=deadline)
         except SessionLost as exc:
@@ -84,6 +92,11 @@ class _WatchedSession:
             raise
         finally:
             self.inflight_since = None
+
+    async def wait_for_inflight(self) -> None:
+        """Block until a `set()` call has started, consuming no clock time."""
+        await self._inflight_event.wait()
+        self._inflight_event.clear()
 
 
 class WalkService:
@@ -232,6 +245,16 @@ class WalkService:
                 clock=self._clock,
                 sleep=self._sleep,
             )
+            # Authoritative: `run_walk`'s own `ticks` counts a tick as soon as
+            # `walker.advance()` runs, *before* `session.set()` is awaited, so
+            # a tick that ends in SessionLost is still counted here even
+            # though `_on_fix` (and so `run.ticks`, from the last per-fix
+            # broadcast) never saw it -- `on_fix` only runs after a
+            # *successful* `set()`. That means this final count can
+            # legitimately be one higher than the last "fix" message's
+            # `stats.ticks` when the run ends on a lost session. That's
+            # correct, not a bug: this is the count that actually reached the
+            # device.
             run.stats = StatsOut.from_stats(stats)
             lost = getattr(run.session, "lost_error", None)
             if lost is not None:
@@ -250,8 +273,16 @@ class WalkService:
                 run.watchdog.cancel()
             if self._state in (WalkState.FINISHED, WalkState.ERROR):
                 await self._teardown(run)
+                # Carry the authoritative final stats alongside the terminal
+                # state so a WebSocket-only consumer learns the real numbers
+                # without having to re-`GET /api/walk`.
                 self._broadcast(
-                    {"type": "state", "state": self._state.value, "error": self._error}
+                    {
+                        "type": "state",
+                        "state": self._state.value,
+                        "error": self._error,
+                        "stats": run.stats.model_dump() if run.stats is not None else None,
+                    }
                 )
 
     def _effective_state(self) -> WalkState:
@@ -265,11 +296,36 @@ class WalkService:
         return self._state
 
     async def _watch_stalls(self, run: _Run) -> None:
-        """Broadcast state changes that produce no fix, e.g. a mid-run reconnect."""
+        """Broadcast state changes that produce no fix, e.g. a mid-run reconnect.
+
+        Polls on `self._sleep` -- the same injected clock/sleep the tick loop
+        uses -- so tests can drive this deterministically with a virtual
+        clock. But it only polls *while a `set()` call is actually in
+        flight*: the rest of the time it blocks on `wait_for_inflight()`,
+        which consumes no clock time at all. That matters because during a
+        genuine stall the tick loop is itself suspended inside that same
+        `set()` call and advances no virtual time -- so the watchdog's own
+        polling is the only thing moving the clock, which is exactly what's
+        needed to notice the stall. Polling unconditionally on a fixed period
+        for the whole life of the walk, instead, would race the tick loop's
+        own `sleep()` calls between ticks and double-advance a shared virtual
+        clock, corrupting tick counts in every other test.
+        """
         last = self._effective_state()
+        session = run.session
         try:
             while True:
-                await asyncio.sleep(self._stall_threshold_s / 2)
+                await session.wait_for_inflight()
+                while session.inflight_since is not None:
+                    current = self._effective_state()
+                    if current is not last:
+                        last = current
+                        self._broadcast(
+                            {"type": "state", "state": current.value, "error": self._error}
+                        )
+                    if session.inflight_since is None:
+                        break
+                    await self._sleep(self._stall_threshold_s / 2)
                 current = self._effective_state()
                 if current is not last:
                     last = current

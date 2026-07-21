@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import pathlib
 from contextlib import asynccontextmanager
@@ -157,12 +158,39 @@ def create_app(
             # The snapshot is the only message carrying route and trail, so a tab
             # connecting mid-run gets the whole picture exactly once.
             await socket.send_json({"type": "snapshot", "status": service.status().model_dump()})
+            # A departed client must be noticed even while the service is idle,
+            # when there is no broadcast traffic at all to fail a `send_json`
+            # against. Racing a concurrent `receive_text()` against `queue.get()`
+            # gives every idle connection its own detector: the client's close
+            # (or a real TCP drop) surfaces as WebSocketDisconnect from
+            # `receive_text()` exactly like a failed send does, with no polling
+            # interval and no effect on `_broadcast`, which stays synchronous
+            # and never awaits.
+            recv_task: asyncio.Task = asyncio.create_task(socket.receive_text())
             try:
                 while True:
-                    message = await queue.get()
-                    await socket.send_json(message)
+                    get_task: asyncio.Task = asyncio.create_task(queue.get())
+                    done, _pending = await asyncio.wait(
+                        {recv_task, get_task}, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    if get_task in done:
+                        await socket.send_json(get_task.result())
+                    else:
+                        get_task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await get_task
+                    if recv_task in done:
+                        # Raises WebSocketDisconnect if the client left; a real
+                        # text message (never sent by this frontend today) is
+                        # simply discarded and listening resumes.
+                        recv_task.result()
+                        recv_task = asyncio.create_task(socket.receive_text())
             except WebSocketDisconnect:
                 return
+            finally:
+                recv_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await recv_task
 
     if static_dir is not None and static_dir.exists():
         app.mount("/", StaticFiles(directory=static_dir, html=True), name="ui")

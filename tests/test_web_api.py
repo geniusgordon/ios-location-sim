@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
@@ -7,7 +9,7 @@ from ios_loc.presets import Preset, load_config, save_preset
 from ios_loc.routing import RoutingError
 from ios_loc.web.api import create_app
 from ios_loc.web.service import WalkService
-from tests.test_web_service import SQUARE, FakeRouteClient, FakeSession, VirtualClock
+from tests.conftest import SQUARE, FakeRouteClient, FakeSession, VirtualClock
 
 
 def _make_app(tmp_path, session=None, static_dir=None):
@@ -304,7 +306,21 @@ def test_the_socket_streams_fixes_then_a_finished_state(context):
 
     kinds = [m["type"] for m in seen]
     assert kinds.count("fix") == 2
-    assert seen[-1] == {"type": "state", "state": "finished", "error": None}
+    # The terminal broadcast carries the authoritative final stats alongside
+    # the state, so a WebSocket-only consumer never has to re-GET /api/walk
+    # to learn the final numbers (Finding 3).
+    assert seen[-1] == {
+        "type": "state",
+        "state": "finished",
+        "error": None,
+        "stats": {
+            "elapsed_s": 2.0,
+            "distance_m": seen[-1]["stats"]["distance_m"],
+            "laps": 0,
+            "reconnects": 0,
+            "ticks": 2,
+        },
+    }
 
 
 def test_two_viewers_each_get_their_own_snapshot_and_full_stream(context):
@@ -327,23 +343,85 @@ def test_two_viewers_each_get_their_own_snapshot_and_full_stream(context):
     assert [m["type"] for m in second_seen] == expected
 
 
-def test_a_disconnected_socket_does_not_stop_the_walk(context):
-    client, *_ = context
-    with client.websocket_connect("/ws") as socket:
-        assert socket.receive_json()["type"] == "snapshot"
-        client.post(
-            "/api/walk",
-            json={"waypoints": [[25.0, 121.0], [25.1, 121.1]], "duration_s": 2},
-        )
-        # Close immediately, mid-walk, without draining any fixes.
+def test_a_disconnected_socket_does_not_stop_the_walk(tmp_path):
+    """A departed mid-walk viewer must neither stop the walk nor linger as a
+    subscriber. Built inline (rather than off the shared `context` fixture)
+    so the test can reach `service._subscribers` directly and check the
+    cleanup, not just that a fresh connection still works (Finding 5)."""
+    route_client = FakeRouteClient()
+    clock = VirtualClock()
+    session = FakeSession()
+    service = WalkService(
+        route_client=route_client,
+        session_factory=lambda: session,
+        clock=clock,
+        sleep=clock.sleep,
+    )
+    app = create_app(service=service, route_client=route_client, config_path=tmp_path / "config.toml")
 
-    # The walk is still running/finishing on the service side, unaffected by
-    # the departed viewer; a fresh connection can still see it end cleanly.
-    with client.websocket_connect("/ws") as socket:
-        message = socket.receive_json()
-        assert message["type"] == "snapshot"
-        assert message["status"]["state"] in ("walking", "finished")
-    client.delete("/api/walk")
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws") as socket:
+            assert socket.receive_json()["type"] == "snapshot"
+            client.post(
+                "/api/walk",
+                json={"waypoints": [[25.0, 121.0], [25.1, 121.1]], "duration_s": 2},
+            )
+            # Close immediately, mid-walk, without draining any fixes.
+
+        # The departed viewer's subscription must not linger.
+        assert service._subscribers == set()
+
+        # The walk is still running/finishing on the service side, unaffected by
+        # the departed viewer; a fresh connection can still see it end cleanly.
+        with client.websocket_connect("/ws") as socket:
+            message = socket.receive_json()
+            assert message["type"] == "snapshot"
+            assert message["status"]["state"] in ("walking", "finished")
+        client.delete("/api/walk")
+
+
+def test_an_idle_departed_socket_is_cleaned_up_even_with_no_walk_running(tmp_path):
+    """A closed tab must not leave its subscription (and connection) parked
+    forever when the service is idle and nothing is ever broadcast to notice
+    the disconnect through (Finding 2). Before the fix, the handler only ever
+    awaits `queue.get()` and `send_json`, so with no walk running there is no
+    traffic at all to fail against, and a departed client's handler blocks on
+    `queue.get()` forever.
+
+    Exiting `client.websocket_connect(...)`'s own `with` block is not a fair
+    test of this: Starlette's `WebSocketTestSession.__exit__` forcibly cancels
+    the server-side task after sending the disconnect (see the comment on
+    `test_a_real_websocketdisconnect_during_send_is_handled_and_cleans_up`
+    above), which would clean up the subscription regardless of whether the
+    handler ever reads the socket. So this test calls `.close()` directly --
+    sending a genuine ASGI `websocket.disconnect` message with no cancellation
+    -- and polls for cleanup from *outside* that `with` block, the same way a
+    real client's TCP drop would look to a long-lived uvicorn process.
+    """
+    route_client = FakeRouteClient()
+    clock = VirtualClock()
+    service = WalkService(
+        route_client=route_client,
+        session_factory=FakeSession,
+        clock=clock,
+        sleep=clock.sleep,
+    )
+    app = create_app(service=service, route_client=route_client, config_path=tmp_path / "config.toml")
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws") as socket:
+            assert socket.receive_json()["type"] == "snapshot"
+            # No walk started -- idle, no broadcast traffic whatsoever. Just
+            # send a real disconnect, without tearing down the whole session.
+            socket.close()
+
+            deadline = time.monotonic() + 2.0
+            while service._subscribers and time.monotonic() < deadline:
+                time.sleep(0.01)
+
+            assert service._subscribers == set(), (
+                "the handler must notice a departed idle client on its own"
+            )
 
 
 def test_a_real_websocketdisconnect_during_send_is_handled_and_cleans_up(tmp_path, monkeypatch):
