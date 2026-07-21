@@ -57,14 +57,30 @@ def test_speed_is_never_negative():
 
 
 def test_positions_never_teleport():
-    w = Walker(straight_path(1.0), WALK, loop=True, rng=random.Random(3), scatter_m=3.0)
+    # Scatter off, so this pins the movement model itself deterministically:
+    # no step may ever exceed the speed ceiling.
+    w = Walker(straight_path(1.0), WALK, loop=True, rng=random.Random(3), scatter_m=0.0)
     prev = None
     for _ in range(2_000):
         fix = w.advance(1.0)
         cur = (fix.lat, fix.lon)
         if prev is not None:
-            # ceiling * dt, plus twice the scatter budget on both endpoints
-            assert haversine_m(prev, cur) <= MAX_SPEED_MPS * 1.0 + 4 * 3.0
+            assert haversine_m(prev, cur) <= MAX_SPEED_MPS * 1.0 + 1e-6
+        prev = cur
+
+
+def test_scatter_stays_within_a_sane_envelope():
+    # With scatter on, consecutive points differ by the true step PLUS the
+    # difference of two independent 2-axis Gaussians (~sqrt(2)*sigma per axis).
+    # Bound at 10*sigma so a Gaussian tail can never flake the suite.
+    scatter = 3.0
+    w = Walker(straight_path(1.0), WALK, loop=True, rng=random.Random(3), scatter_m=scatter)
+    prev = None
+    for _ in range(2_000):
+        fix = w.advance(1.0)
+        cur = (fix.lat, fix.lon)
+        if prev is not None:
+            assert haversine_m(prev, cur) <= MAX_SPEED_MPS * 1.0 + 10 * scatter
         prev = cur
 
 
@@ -134,3 +150,42 @@ def test_800m_loop_at_walking_pace_takes_about_ten_minutes():
         elapsed += 1.0
         assert elapsed < 1200, "walker is implausibly slow"
     assert 550 < elapsed < 700
+
+
+def test_distance_m_is_cumulative_not_wrapped():
+    # The CLI reports this as total distance walked, so it must not reset each
+    # lap: 600 s at 1.3 m/s is 780 m however short the underlying path is.
+    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
+    w = Walker(straight_path(0.001), profile, loop=True, rng=random.Random(0), scatter_m=0.0)
+    for _ in range(600):
+        w.advance(1.0)
+    assert w.distance_m == pytest.approx(780.0, rel=1e-6)
+    assert w.laps >= 5
+
+
+def test_open_path_loop_retraces_instead_of_teleporting():
+    # An A->B route with --loop must bounce B->A->B, never jump back to A.
+    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
+    w = Walker(straight_path(0.001), profile, loop=True, rng=random.Random(0), scatter_m=0.0)
+    lats = [w.advance(1.0).lat for _ in range(400)]
+    peak = lats.index(max(lats))
+    assert max(lats) > 0.0009, "should reach the far end of the route"
+    assert min(lats[peak:]) < 0.0005, "should retrace back toward the start"
+    for a, b in zip(lats, lats[1:]):
+        assert abs(b - a) < 0.0001, "no positional jump at the turnaround"
+
+
+def test_closed_loop_wraps_without_reversing():
+    # A genuinely closed route wraps seamlessly by modulo, with no bounce.
+    path = Path([(0.0, 0.0), (0.001, 0.0), (0.001, 0.001), (0.0, 0.0)])
+    assert path.is_closed_loop
+    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
+    w = Walker(path, profile, loop=True, rng=random.Random(0), scatter_m=0.0)
+    prev = None
+    for _ in range(500):
+        fix = w.advance(1.0)
+        cur = (fix.lat, fix.lon)
+        if prev is not None:
+            assert haversine_m(prev, cur) <= MAX_SPEED_MPS + 1e-6
+        prev = cur
+    assert w.laps >= 1

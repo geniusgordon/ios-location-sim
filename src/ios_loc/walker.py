@@ -31,6 +31,22 @@ class Fix:
 
 
 class Walker:
+    """Advances a simulated position along a `Path` according to a `Profile`.
+
+    Two behaviours are deliberate and load-bearing, not oversights:
+
+    - `distance_m` is the cumulative total distance travelled and is never
+      wrapped or reset, even across laps. This is what the CLI reports to the
+      user as "total distance walked"; wrapping it to the path length would
+      under-report a long multi-lap walk by however many laps were completed.
+    - With `loop=True`, a genuinely closed path (start ~= end) wraps by simple
+      modulo arithmetic, while an open path (e.g. an out-and-back straight
+      line) instead bounces back and forth along itself. Teleporting from the
+      far end of an open path straight back to the start would put a
+      discontinuous jump in the emitted track; bouncing keeps every emitted
+      step within the speed ceiling.
+    """
+
     def __init__(
         self,
         path: Path,
