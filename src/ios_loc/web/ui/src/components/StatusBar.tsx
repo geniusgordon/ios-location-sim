@@ -65,7 +65,7 @@ export default function StatusBar(props: { onOpenSidebar(): void }) {
   }
 
   return (
-    <div className="bg-background/95 flex items-center gap-4 border-t px-4 py-2 backdrop-blur">
+    <div className="bg-background/95 flex h-14 items-center gap-4 border-t px-4 py-2 backdrop-blur">
       <Button variant="ghost" size="icon" aria-label="Open sidebar" onClick={props.onOpenSidebar}>
         <Menu className="size-4" />
       </Button>

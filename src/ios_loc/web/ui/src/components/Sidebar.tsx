@@ -54,7 +54,7 @@ export default function Sidebar(props: SidebarProps) {
       <SheetContent
         side="left"
         showOverlay={false}
-        className="flex w-100 flex-col gap-0 p-0 sm:max-w-100"
+        className="data-[side=left]:bottom-14 data-[side=left]:h-auto flex w-100 flex-col gap-0 p-0 sm:max-w-100"
       >
         <SheetHeader className="border-b">
           <SheetTitle>{TITLE[props.mode]}</SheetTitle>
