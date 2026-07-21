@@ -57,7 +57,10 @@ export default function StartForm(props: StartFormProps) {
       costing: usingPreset ? null : props.costing,
       loop: usingPreset && !loop ? null : loop,
       duration_s: Number.isFinite(minutes) && minutes > 0 ? minutes * 60 : null,
-      scatter_m: Number.isFinite(scatterM) ? scatterM : 3,
+      // Clamped client-side: the server bounds this 0..100 and would 422 on
+      // anything outside, which is a pointless round trip for a slider-ish
+      // value the user can only have fat-fingered.
+      scatter_m: Number.isFinite(scatterM) ? Math.min(100, Math.max(0, scatterM)) : 3,
     }
     try {
       await startWalk(body)
@@ -133,6 +136,10 @@ export default function StartForm(props: StartFormProps) {
         <Label htmlFor="start-scatter">GPS scatter (metres, 0–100)</Label>
         <Input
           id="start-scatter"
+          type="number"
+          min={0}
+          max={100}
+          step={1}
           inputMode="decimal"
           value={scatter}
           onChange={(event) => setScatter(event.target.value)}
