@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from ios_loc.path import Coord, Path
 from ios_loc.presets import Profile
 from ios_loc.runner import run_walk
+from ios_loc.session import SessionLost
 from ios_loc.walker import Walker
 from ios_loc.web.models import FixOut, StatsOut, WalkState, WalkStatus
 
@@ -47,6 +48,42 @@ class _Run:
     stats: StatsOut | None = None
     ticks: int = 0
     torn_down: bool = False
+    watchdog: asyncio.Task | None = None
+
+
+class _WatchedSession:
+    """Wraps a LocationSession so the service can see what the tick loop hides.
+
+    `run_walk` catches SessionLost and returns normally, and a stalled `set()`
+    is invisible from outside. Both matter to the UI, so record them here rather
+    than modifying runner.py or session.py.
+    """
+
+    def __init__(self, inner, clock) -> None:
+        self._inner = inner
+        self._clock = clock
+        self.lost_error: BaseException | None = None
+        self.inflight_since: float | None = None
+
+    @property
+    def reconnects(self) -> int:
+        return getattr(self._inner, "reconnects", 0)
+
+    async def start(self, attempts: int = 3) -> None:
+        await self._inner.start()
+
+    async def stop(self, clear: bool = True) -> None:
+        await self._inner.stop(clear=clear)
+
+    async def set(self, lat: float, lon: float, deadline=None) -> None:
+        self.inflight_since = self._clock()
+        try:
+            await self._inner.set(lat, lon, deadline=deadline)
+        except SessionLost as exc:
+            self.lost_error = exc
+            raise
+        finally:
+            self.inflight_since = None
 
 
 class WalkService:
@@ -61,6 +98,7 @@ class WalkService:
         clock=time.monotonic,
         sleep=asyncio.sleep,
         rng=None,
+        stall_threshold_s: float = 2.0,
     ) -> None:
         self._route_client = route_client
         self._session_factory = session_factory
@@ -70,6 +108,7 @@ class WalkService:
         self._clock = clock
         self._sleep = sleep
         self._rng = rng if rng is not None else random.Random()
+        self._stall_threshold_s = stall_threshold_s
 
         self._run: _Run | None = None
         self._state = WalkState.IDLE
@@ -87,9 +126,9 @@ class WalkService:
     def status(self) -> WalkStatus:
         run = self._run
         if run is None:
-            return WalkStatus(state=self._state, error=self._error)
+            return WalkStatus(state=self._effective_state(), error=self._error)
         return WalkStatus(
-            state=self._state,
+            state=self._effective_state(),
             error=self._error,
             fix=run.latest_fix,
             stats=run.stats,
@@ -117,7 +156,7 @@ class WalkService:
             walker = Walker(
                 path, spec.profile, loop=spec.loop, rng=self._rng, scatter_m=spec.scatter_m
             )
-            session = self._session_factory()
+            session = _WatchedSession(self._session_factory(), self._clock)
             run = _Run(
                 walker=walker,
                 session=session,
@@ -136,6 +175,7 @@ class WalkService:
 
             self._state = WalkState.WALKING
             run.task = asyncio.create_task(self._drive(run), name="ios-loc-walk")
+            run.watchdog = asyncio.create_task(self._watch_stalls(run), name="ios-loc-stall")
             self._broadcast({"type": "state", "state": self._state.value, "error": None})
             return self.status()
 
@@ -151,6 +191,8 @@ class WalkService:
             self._run = None
             self._state = WalkState.IDLE
             self._error = None
+            if run.watchdog is not None:
+                run.watchdog.cancel()
             if task is not None:
                 task.cancel()
                 try:
@@ -186,7 +228,12 @@ class WalkService:
                 sleep=self._sleep,
             )
             run.stats = StatsOut.from_stats(stats)
-            self._state = WalkState.FINISHED
+            lost = getattr(run.session, "lost_error", None)
+            if lost is not None:
+                self._state = WalkState.ERROR
+                self._error = f"{type(lost).__name__}: {lost}"
+            else:
+                self._state = WalkState.FINISHED
         except asyncio.CancelledError:
             raise
         except BaseException as exc:  # noqa: BLE001 — reported, never swallowed
@@ -194,11 +241,38 @@ class WalkService:
             self._state = WalkState.ERROR
             self._error = f"{type(exc).__name__}: {exc}"
         finally:
+            if run.watchdog is not None:
+                run.watchdog.cancel()
             if self._state in (WalkState.FINISHED, WalkState.ERROR):
                 await self._teardown(run)
                 self._broadcast(
                     {"type": "state", "state": self._state.value, "error": self._error}
                 )
+
+    def _effective_state(self) -> WalkState:
+        """WALKING becomes RECONNECTING while a set() has been in flight too long."""
+        run = self._run
+        if self._state is not WalkState.WALKING or run is None:
+            return self._state
+        since = getattr(run.session, "inflight_since", None)
+        if since is not None and (self._clock() - since) >= self._stall_threshold_s:
+            return WalkState.RECONNECTING
+        return self._state
+
+    async def _watch_stalls(self, run: _Run) -> None:
+        """Broadcast state changes that produce no fix, e.g. a mid-run reconnect."""
+        last = self._effective_state()
+        try:
+            while True:
+                await asyncio.sleep(self._stall_threshold_s / 2)
+                current = self._effective_state()
+                if current is not last:
+                    last = current
+                    self._broadcast(
+                        {"type": "state", "state": current.value, "error": self._error}
+                    )
+        except asyncio.CancelledError:
+            raise
 
     async def _teardown(self, run: _Run) -> None:
         if run.torn_down:
@@ -226,7 +300,7 @@ class WalkService:
                 "type": "fix",
                 "fix": out.model_dump(),
                 "stats": run.stats.model_dump(),
-                "state": self._state.value,
+                "state": self._effective_state().value,
             }
         )
 

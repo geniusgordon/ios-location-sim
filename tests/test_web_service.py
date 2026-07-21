@@ -1,9 +1,11 @@
 import asyncio
+import time
 
 import pytest
 
 from ios_loc.path import Path
 from ios_loc.presets import DEFAULT_PROFILES
+from ios_loc.session import SessionLost
 from ios_loc.web.models import WalkState, WalkStatus
 from ios_loc.web.service import StartSpec, WalkAlreadyRunning, WalkService
 
@@ -351,3 +353,49 @@ def _drain(queue):
     while not queue.empty():
         out.append(queue.get_nowait())
     return out
+
+
+async def test_device_lost_is_reported_as_an_error_not_a_clean_finish():
+    session = FakeSession(fail_with=SessionLost("device unreachable"), fail_on=3)
+    service, _ = make_service(session=session)
+    await service.start(spec(duration_s=10.0))
+    await service.wait_finished()
+
+    status = service.status()
+    assert status.state is WalkState.ERROR
+    assert "unreachable" in status.error
+
+
+async def test_programming_errors_end_the_run_and_surface_the_type():
+    session = FakeSession(fail_with=TypeError("bad argument"), fail_on=2)
+    service, _ = make_service(session=session)
+    await service.start(spec(duration_s=10.0))
+    await service.wait_finished()
+
+    status = service.status()
+    assert status.state is WalkState.ERROR
+    assert "TypeError" in status.error
+    assert len(session.sets) == 2  # it did not retry the bug
+
+
+async def test_a_slow_set_reports_reconnecting():
+    class SlowSession(FakeSession):
+        async def set(self, lat, lon, deadline=None):
+            await asyncio.sleep(0.2)
+            await super().set(lat, lon)
+
+    # Real time, not the virtual clock: the stall is measured in wall seconds
+    # precisely because the tick loop is frozen and advances no virtual time.
+    service, _ = make_service(
+        session=SlowSession(),
+        stall_threshold_s=0.05,
+        clock=time.monotonic,
+        sleep=asyncio.sleep,
+    )
+    with service.subscribe() as queue:
+        await service.start(spec(duration_s=1.0))
+        await asyncio.sleep(0.12)
+        assert service.status().state is WalkState.RECONNECTING
+        await service.wait_finished()
+        states = [m["state"] for m in _drain(queue) if m["type"] == "state"]
+    assert "reconnecting" in states
