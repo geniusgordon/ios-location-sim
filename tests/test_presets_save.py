@@ -122,19 +122,51 @@ def test_crlf_line_endings_round_trip(tmp_path):
     path.write_bytes(
         b"# a windows-authored config\r\n"
         b"[profiles.jog]\r\n"
-        b"speed = 2.6\r\n"
+        b"speed = 2.6  # trailing comment\r\n"
+        b'costing = "pedestrian"\r\n'
         b"\r\n"
         b"[presets.old]\r\n"
-        b'waypoints = [[25.0, 121.0], [25.1, 121.1]]\r\n'
+        b"waypoints = [[25.0, 121.0], [25.1, 121.1]]\r\n"
     )
 
     save_preset(path, Preset(name="new", waypoints=[(1.0, 2.0), (3.0, 4.0)]))
+
+    raw = path.read_bytes()
+    # The preserved head (everything outside [presets.*]) must keep its
+    # original CRLF bytes verbatim -- not just "the comment is present
+    # somewhere", but the literal "\r\n" sequence around it. (The very last
+    # kept line's own trailing newline is deliberately normalized by the
+    # pre-existing `rstrip()` before the regenerated [presets.*] block is
+    # appended, same as for an LF file, so we assert on lines that are not
+    # the last one -- the bug this test guards against is universal-newline
+    # translation on read/write, not that intentional normalization.)
+    assert b"# a windows-authored config\r\n" in raw
+    assert b"[profiles.jog]\r\n" in raw
+    assert b"speed = 2.6  # trailing comment\r\n" in raw
 
     text = path.read_text()
     assert "# a windows-authored config" in text
     profiles, presets = load_config(path)
     assert profiles["jog"].speed == 2.6
     assert set(presets) == {"old", "new"}
+
+
+def test_an_unknown_profile_is_rejected_before_writing(tmp_path):
+    path = tmp_path / "config.toml"
+    with pytest.raises(ConfigError):
+        save_preset(path, Preset(name="bad", waypoints=[(1.0, 2.0), (3.0, 4.0)], profile="nope"))
+    assert not path.exists()
+
+
+def test_an_unknown_profile_leaves_an_existing_file_byte_identical(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_bytes(CONFIG_WITH_COMMENTS.encode())
+    before = path.read_bytes()
+
+    with pytest.raises(ConfigError):
+        save_preset(path, Preset(name="bad", waypoints=[(1.0, 2.0), (3.0, 4.0)], profile="nope"))
+
+    assert path.read_bytes() == before
 
 
 def test_a_presets_parent_table_with_no_children_is_dropped(tmp_path):

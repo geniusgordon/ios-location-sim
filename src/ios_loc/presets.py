@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import pathlib
 import re
+import tempfile
 import tomllib
 from dataclasses import dataclass, replace
 
@@ -210,16 +211,36 @@ def _strip_preset_tables(text: str) -> str:
 def save_preset(path: pathlib.Path | None, preset: Preset) -> None:
     """Write `preset` into the config file, replacing any preset of the same name.
 
-    Everything outside the [presets.*] tables is preserved byte for byte;
-    comments inside preset tables are not. The write is atomic (temp + rename)
-    so an interrupted save cannot leave a truncated config behind.
+    Everything outside the [presets.*] tables is preserved byte for byte,
+    including line endings (a CRLF-authored file stays CRLF); comments inside
+    preset tables are not. `preset.profile` is validated against the built-in
+    profiles plus any `[profiles.*]` the file already defines, before any read-
+    modify-write of the target file, so a preset naming an unknown profile
+    leaves the file untouched instead of writing something `load_config` will
+    then reject. The write is atomic (temp + rename) so an interrupted save
+    cannot leave a truncated config behind, and a failed write cleans up its
+    own temp file.
     """
     path = pathlib.Path(path) if path else DEFAULT_CONFIG_PATH
     # Validate through the same path the loader uses, before touching the disk.
     _parse_waypoints([[lat, lon] for lat, lon in preset.waypoints], preset.name)
 
-    existing_text = path.read_text() if path.exists() else ""
-    _, existing = load_config(path) if path.exists() else ({}, {})
+    # `load_config` already handles a missing file (defaults, no presets), so
+    # this is also where we learn the profiles a not-yet-written file would
+    # accept. Validating here -- before any read-modify-write of the target
+    # file -- means a preset naming an unknown profile never touches disk, and
+    # never jams `load_config` for every save that follows.
+    profiles, existing = load_config(path)
+    if preset.profile not in profiles:
+        raise ConfigError(
+            f"preset {preset.name!r}: unknown profile {preset.profile!r}; "
+            f"available: {', '.join(sorted(profiles))}"
+        )
+
+    # Read with newline translation disabled so the preserved head keeps its
+    # original line endings byte for byte (e.g. a CRLF-authored file is not
+    # silently rewritten to LF).
+    existing_text = path.read_text(newline="") if path.exists() else ""
     merged = dict(existing)
     merged[preset.name] = preset
 
@@ -237,6 +258,17 @@ def save_preset(path: pathlib.Path | None, preset: Preset) -> None:
     body = f"{head}\n\n{rendered}" if head else rendered
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(body)
-    os.replace(tmp, path)
+    # Atomic temp + rename, mirroring routing.py's _write_cache: a
+    # collision-proof temp name via mkstemp, same-directory os.replace so the
+    # rename stays atomic, and cleanup of the temp file if anything fails
+    # partway through so a bad write never leaves a stray .tmp behind.
+    tmp: str | None = None
+    try:
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
+        with os.fdopen(fd, "w", newline="") as handle:
+            handle.write(body)
+        os.replace(tmp, path)
+    except BaseException:
+        if tmp is not None:
+            pathlib.Path(tmp).unlink(missing_ok=True)
+        raise
