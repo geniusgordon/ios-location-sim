@@ -245,8 +245,10 @@ class WalkService:
                 if self._pin_session is not None:
                     try:
                         await self._pin_session.stop(clear=True)
-                    except Exception:  # noqa: BLE001 — teardown must not mask the cause
-                        logger.warning("could not clear the device after a failed pin")
+                    except Exception as teardown_exc:  # noqa: BLE001 — teardown must not mask the cause
+                        logger.warning(
+                            "could not clear the device after a failed pin: %s", teardown_exc
+                        )
                     self._pin_session = None
                 self._pin_fix = None
                 self._state = WalkState.IDLE
@@ -260,6 +262,12 @@ class WalkService:
             )
             self._state = WalkState.PINNED
             self._error = None
+            # A leftover finished/errored run must not shadow the pin in
+            # status(): status() prefers self._run whenever it is set, so a
+            # stale run (task already done, already torn down by _drive's
+            # finally) would report the OLD walk's route/trail/stats/fix
+            # under state=PINNED instead of the pin itself.
+            self._run = None
             # A "fix" message (not "state") so the store's fix channel fires and
             # the map's live dot moves to the pin. Stats are zero: a pin has no
             # elapsed time, distance, or laps.
@@ -282,6 +290,11 @@ class WalkService:
                 session = self._pin_session
                 self._pin_session = None
                 self._pin_fix = None
+                # A leftover finished/errored run must not shadow IDLE in
+                # status(): if the pin was set over a stale run, status()
+                # would keep reporting that run's route/trail after this
+                # stop() otherwise.
+                self._run = None
                 self._state = WalkState.IDLE
                 self._error = None
                 try:

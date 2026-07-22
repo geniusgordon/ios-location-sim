@@ -540,6 +540,34 @@ async def test_pin_tears_down_the_session_on_device_failure():
     assert service.status().error is not None
 
 
+async def test_pin_over_a_finished_run_clears_the_stale_run():
+    session = FakeSession()
+    service, _ = make_service(session=session)
+    await service.start(spec(duration_s=5.0))
+    await service.wait_finished()
+    assert service.status().state is WalkState.FINISHED
+
+    # No intervening stop() -- pin() must not let the leftover finished run
+    # shadow the pin in status().
+    status = await service.pin(48.858666, 2.293991)
+    assert status.state is WalkState.PINNED
+    assert status.fix is not None
+    assert (status.fix.lat, status.fix.lon) == (48.858666, 2.293991)
+    assert status.route == []
+    assert status.trail == []
+
+    status = service.status()
+    assert status.state is WalkState.PINNED
+    assert (status.fix.lat, status.fix.lon) == (48.858666, 2.293991)
+    assert status.route == []
+    assert status.trail == []
+
+    await service.stop()
+    status = service.status()
+    assert status.state is WalkState.IDLE
+    assert status.route == []
+
+
 async def test_starting_a_walk_replaces_a_pin():
     pin_session = FakeSession()
     walk_session = FakeSession()

@@ -44,7 +44,7 @@ export default function CoordBox() {
           disabled={walking}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !walking) onSubmit()
+            if (event.key === "Enter" && !walking && !pinning) onSubmit()
           }}
         />
         <Button size="sm" disabled={walking || pinning} onClick={onSubmit}>
