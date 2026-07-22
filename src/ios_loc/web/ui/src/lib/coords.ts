@@ -39,3 +39,9 @@ export function parseLatLon(text: string): { point: LatLon } | { error: string }
   if (lon < -180 || lon > 180) return { error: "Longitude must be between -180 and 180" }
   return { point: [lat, lon] }
 }
+
+/** Render a point as "lat, lon" at 5 decimals -- the inverse of parseLatLon's
+ *  accepted form, used to show the currently-set coordinate in the UI. */
+export function formatLatLon(point: LatLon): string {
+  return `${point[0].toFixed(5)}, ${point[1].toFixed(5)}`
+}
