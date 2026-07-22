@@ -68,6 +68,14 @@ class Preset:
     loop: bool = False
 
 
+@dataclass(frozen=True)
+class Place:
+    """A named single point — what the set-location pin holds the device at."""
+
+    name: str
+    point: Coord
+
+
 DEFAULT_PROFILES: dict[str, Profile] = {
     "walk": Profile(
         name="walk",
@@ -125,6 +133,24 @@ def _parse_waypoints(raw: object, preset_name: str) -> list[Coord]:
     return coords
 
 
+def _parse_point(raw: object, place_name: str) -> Coord:
+    """Validate a place's single point, naming the place in every error."""
+    if not isinstance(raw, (list, tuple)) or len(raw) != 2:
+        raise ConfigError(
+            f"place {place_name!r}: 'point' must be a [latitude, longitude] pair, "
+            f"got {raw!r}"
+        )
+    try:
+        lat, lon = float(raw[0]), float(raw[1])
+    except (TypeError, ValueError) as exc:
+        raise ConfigError(f"place {place_name!r}: point is not numeric: {raw!r}") from exc
+    try:
+        _check_coord_range(lat, lon, f"place {place_name!r}: point")
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
+    return (lat, lon)
+
+
 def load_config(
     path: pathlib.Path | None = None,
 ) -> tuple[dict[str, Profile], dict[str, Preset]]:
@@ -173,6 +199,27 @@ def load_config(
         )
 
     return profiles, presets
+
+
+def load_places(path: pathlib.Path | None = None) -> dict[str, Place]:
+    """Load the named single locations from the config file.
+
+    Deliberately separate from `load_config` rather than a third element of its
+    return tuple: every existing caller unpacks two values, and widening that
+    signature would be a breaking change bought for nothing. `load_config`
+    ignores every top-level table it does not know, so [places.*] needs no
+    change there and an older build reading a newer config still works.
+    """
+    path = pathlib.Path(path) if path else DEFAULT_CONFIG_PATH
+    if not path.exists():
+        return {}
+    data = tomllib.loads(path.read_text())
+    places: dict[str, Place] = {}
+    for name, raw in data.get("places", {}).items():
+        if "point" not in raw:
+            raise ConfigError(f"place {name!r} in {path}: missing required 'point'")
+        places[name] = Place(name=name, point=_parse_point(raw["point"], name))
+    return places
 
 
 # Shared verbatim by `cli.walk` and `POST /api/walk` so a rephrasing here never
