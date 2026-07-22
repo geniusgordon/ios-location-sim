@@ -13,6 +13,9 @@ export type StartRequest = S["StartRequest"]
 export type WalkStatus = S["WalkStatus"]
 export type WalkStateName = S["WalkState"]
 export type PinRequest = S["PinRequest"]
+export type Place = S["PlaceOut"]
+export type PlaceIn = S["PlaceIn"]
+export type PlacesList = S["PlacesListOut"]
 
 /** `[latitude, longitude]` — the wire order everywhere in this API. */
 export type LatLon = [number, number]

@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ApiError, getPresets, postRoute, setFetch, startWalk, stopWalk } from "./client"
+import {
+  ApiError,
+  deletePlace,
+  deletePreset,
+  getPresets,
+  postRoute,
+  savePlace,
+  setFetch,
+  startWalk,
+  stopWalk,
+} from "./client"
 
 function stub(status: number, body: unknown, contentType = "application/json") {
   const f = vi.fn(async () =>
@@ -88,5 +98,32 @@ describe("error mapping", () => {
     const err = await postRoute({ waypoints: [] } as never).catch((e) => e)
     expect(err).not.toBeInstanceOf(ApiError)
     expect((err as DOMException).name).toBe("AbortError")
+  })
+})
+
+describe("places and deletion", () => {
+  it("percent-encodes a name with a space", async () => {
+    let seen = ""
+    setFetch(async (path) => {
+      seen = String(path)
+      return new Response(null, { status: 204 })
+    })
+    await deletePreset("my route")
+    expect(seen).toBe("/api/presets/my%20route")
+  })
+
+  it("resolves a 204 delete without a body", async () => {
+    setFetch(async () => new Response(null, { status: 204 }))
+    await expect(deletePlace("home")).resolves.toBeUndefined()
+  })
+
+  it("surfaces the server detail on a failed save", async () => {
+    setFetch(
+      async () =>
+        new Response(JSON.stringify({ detail: "could not write config: disk full" }), {
+          status: 500,
+        }),
+    )
+    await expect(savePlace({ name: "home", point: [1, 2] })).rejects.toThrow(ApiError)
   })
 })
