@@ -138,6 +138,7 @@ export default function App() {
     if (pinArmed) {
       // Stay armed: setting several locations in a row is the whole point.
       setPinError(null)
+      setShowSummary(false)
       void pinLocation(point[0], point[1])
         .then(() => handlePinned(point))
         .catch((error: unknown) => {

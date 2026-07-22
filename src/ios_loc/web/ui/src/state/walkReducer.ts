@@ -44,7 +44,7 @@ export function fromStatus(status: WalkStatus): WalkModel {
     fix: status.fix ?? null,
     stats: status.stats ?? null,
     route: (status.route ?? []) as LatLon[],
-    trail: tail(status.trail ?? []),
+    trail: status.state === "pinned" ? [] : tail(status.trail ?? []),
     preset_name: status.preset_name ?? null,
     profile: status.profile ?? null,
     loop: status.loop ?? false,

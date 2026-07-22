@@ -45,6 +45,11 @@ describe("fromStatus", () => {
     expect(fromStatus(long).trail).toHaveLength(TRAIL_LIMIT)
     expect(fromStatus(long).trail[TRAIL_LIMIT - 1].elapsed_s).toBe(499)
   })
+
+  it("drops the trail for a pinned snapshot (no orange line on reconnect)", () => {
+    const pinned = { ...status, state: "pinned" as const }
+    expect(fromStatus(pinned).trail).toEqual([])
+  })
 })
 
 describe("applyMessage: fix", () => {
