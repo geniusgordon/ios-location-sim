@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ChevronDown, MapPin, Save, X } from "lucide-react"
+import { MapPin, Save, X } from "lucide-react"
 import type { LatLon } from "@/api/types"
 import { errorText, pinLocation, savePlace } from "@/api/client"
 import { Button } from "@/components/ui/button"
@@ -102,38 +102,36 @@ export default function PinControl(props: PinControlProps) {
           </Button>
         </span>
       ) : null}
-      {/* One fused control: the label toggles map-tap arming (while armed, the
-          next and every subsequent map tap sets the location instead of drawing
-          a waypoint); the caret opens coordinate entry and the save form. */}
+      {/* A single button opens the popover. The trigger reflects the armed
+          state so map-tap mode is still visible when the popover is closed. */}
       <Popover>
-        <div className="flex items-center">
-          <Button
-            variant={props.armed ? "secondary" : "ghost"}
-            size="sm"
-            className="rounded-r-none"
-            aria-label="Set a location by tapping the map"
-            aria-pressed={props.armed}
-            disabled={props.disabled}
-            onClick={() => props.onArmedChange(!props.armed)}
-          >
-            <MapPin className="size-4" /> Set location
-          </Button>
-          <PopoverTrigger
-            render={
-              <Button
-                variant={props.armed ? "secondary" : "ghost"}
-                size="sm"
-                className="border-border/50 rounded-l-none border-l px-2"
-                aria-label="Set location by coordinates"
-                disabled={props.disabled}
-              >
-                <ChevronDown className="size-4" />
-              </Button>
-            }
-          />
-        </div>
+        <PopoverTrigger
+          render={
+            <Button
+              variant={props.armed ? "secondary" : "ghost"}
+              size="sm"
+              aria-label="Set location"
+              disabled={props.disabled}
+            >
+              <MapPin className="size-4" /> Set location
+            </Button>
+          }
+        />
         <PopoverContent align="end" side="top" className="w-80">
           <div className="flex flex-col gap-2">
+            {/* Map-tap arming lives here now: switch it on, close the popover,
+                and each map tap sets the location (staying on for the next). */}
+            <Button
+              variant={props.armed ? "secondary" : "outline"}
+              size="sm"
+              aria-pressed={props.armed}
+              disabled={props.disabled}
+              onClick={() => props.onArmedChange(!props.armed)}
+            >
+              <MapPin className="size-4" />
+              {props.armed ? "Tapping the map sets location" : "Tap the map to set location"}
+            </Button>
+            <p className="text-muted-foreground text-xs">Or enter coordinates:</p>
             <Input
               aria-label="Coordinates to set the device to"
               placeholder="48.858666,2.293991"
@@ -145,7 +143,7 @@ export default function PinControl(props: PinControlProps) {
               }}
             />
             <Button size="sm" disabled={pinning || props.disabled} onClick={onSubmit}>
-              {pinning ? <Spinner className="size-4" /> : <MapPin className="size-4" />} Set location
+              {pinning ? <Spinner className="size-4" /> : <MapPin className="size-4" />} Set to coordinates
             </Button>
             {error ? (
               <p className="text-destructive text-xs" title={error}>
