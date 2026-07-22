@@ -1,23 +1,27 @@
-import { useState } from "react"
-import { Keyboard, MapPin, Save } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Keyboard, MapPin, Save, X } from "lucide-react"
 import type { LatLon } from "@/api/types"
 import { errorText, pinLocation, savePlace } from "@/api/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Spinner } from "@/components/ui/spinner"
-import { parseLatLon } from "@/lib/coords"
+import { formatLatLon, parseLatLon } from "@/lib/coords"
 
 export interface PinControlProps {
-  /** Armed: the next map tap pins instead of adding a waypoint. */
   armed: boolean
   onArmedChange(armed: boolean): void
-  /** A walk owns the device -- pinning mid-walk 409s and would cost distance. */
+  /** A walk owns the device -- setting mid-walk 409s. Disables the control. */
   disabled: boolean
-  /** The last pinned point, or null. No pin yet means no save form. */
+  /** The currently set/target coordinate, shown in the control and saved by Save. */
   lastPin: LatLon | null
-  onPinned(point: LatLon): void
+  /** Called after a coordinate-typed set. `recenter` asks the map to fly there. */
+  onPinned(point: LatLon, opts?: { recenter?: boolean }): void
   onPlaceSaved(): void
+  /** True while a location is currently held (meta.state === "pinned"). */
+  held: boolean
+  /** Releases the held location (DELETE /api/walk). */
+  onClear(): Promise<void>
 }
 
 export default function PinControl(props: PinControlProps) {
@@ -27,19 +31,29 @@ export default function PinControl(props: PinControlProps) {
   const [placeName, setPlaceName] = useState("")
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [clearing, setClearing] = useState(false)
+
+  // The coordinate input is the single source of truth for both Set and Save.
+  // Syncing it from lastPin (a map tap or a selected place) is what makes "what
+  // you save" always equal "what you see": no separate last-pin/input split.
+  useEffect(() => {
+    if (props.lastPin) setText(formatLatLon(props.lastPin))
+  }, [props.lastPin])
+
+  const shown = parseLatLon(text)
+  const shownValid = "point" in shown
 
   const onSubmit = async () => {
-    const parsed = parseLatLon(text)
-    if ("error" in parsed) {
-      setError(parsed.error)
+    if (!shownValid) {
+      setError(shown.error)
       return
     }
     setPinning(true)
     setError(null)
     try {
-      await pinLocation(parsed.point[0], parsed.point[1])
-      props.onPinned(parsed.point)
-      props.onArmedChange(false)
+      await pinLocation(shown.point[0], shown.point[1])
+      props.onPinned(shown.point, { recenter: true })
+      // Deliberately does NOT disarm: consecutive sets are the point.
     } catch (err) {
       setError(errorText(err))
     } finally {
@@ -48,11 +62,11 @@ export default function PinControl(props: PinControlProps) {
   }
 
   const onSave = async () => {
-    if (!props.lastPin || placeName.trim() === "") return
+    if (!shownValid || placeName.trim() === "") return
     setSaving(true)
     setSaveError(null)
     try {
-      await savePlace({ name: placeName.trim(), point: props.lastPin })
+      await savePlace({ name: placeName.trim(), point: shown.point })
       setPlaceName("")
       props.onPlaceSaved()
     } catch (err) {
@@ -62,24 +76,48 @@ export default function PinControl(props: PinControlProps) {
     }
   }
 
+  const onClear = async () => {
+    setClearing(true)
+    try {
+      await props.onClear()
+    } finally {
+      setClearing(false)
+    }
+  }
+
   return (
     <div className="flex items-center gap-1">
-      {/* A toggle, not a button: aria-pressed plus the filled variant is what
-          tells you the next map tap will pin rather than draw. */}
+      {props.held && props.lastPin ? (
+        <span className="text-muted-foreground flex items-center gap-1 text-xs">
+          <span className="font-mono tabular-nums">Location set {formatLatLon(props.lastPin)}</span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6"
+            aria-label="Clear the set location"
+            disabled={clearing}
+            onClick={onClear}
+          >
+            {clearing ? <Spinner className="size-3" /> : <X className="size-3" />}
+          </Button>
+        </span>
+      ) : null}
+      {/* A toggle, not a button: while armed, the next (and every subsequent)
+          map tap sets the location instead of drawing a waypoint. */}
       <Button
         variant={props.armed ? "secondary" : "ghost"}
         size="sm"
-        aria-label="Pin a location by tapping the map"
+        aria-label="Set a location by tapping the map"
         aria-pressed={props.armed}
         disabled={props.disabled}
         onClick={() => props.onArmedChange(!props.armed)}
       >
-        <MapPin className="size-4" /> Pin
+        <MapPin className="size-4" /> Set location
       </Button>
       <Popover>
         <PopoverTrigger
           render={
-            <Button variant="ghost" size="sm" aria-label="Pin by coordinates" disabled={props.disabled}>
+            <Button variant="ghost" size="sm" aria-label="Set location by coordinates" disabled={props.disabled}>
               <Keyboard className="size-4" />
             </Button>
           }
@@ -107,11 +145,10 @@ export default function PinControl(props: PinControlProps) {
             {props.disabled ? (
               <p className="text-muted-foreground text-xs">Stop the walk before setting a location.</p>
             ) : null}
-            {props.lastPin ? (
+            {shownValid ? (
               <div className="mt-2 flex flex-col gap-2 border-t pt-2">
                 <p className="text-muted-foreground text-xs">
-                  Pinned at {props.lastPin[0].toFixed(5)}, {props.lastPin[1].toFixed(5)}. Name it to
-                  save it to your saved places.
+                  Name this coordinate to save it to your saved places.
                 </p>
                 <Input
                   aria-label="Name for this place"
