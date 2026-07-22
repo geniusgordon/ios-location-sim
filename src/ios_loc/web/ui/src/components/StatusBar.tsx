@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { formatDistance, formatDuration, formatSpeed } from "@/lib/format"
-import { isRunning } from "@/state/walkReducer"
+import { canStop } from "@/state/walkReducer"
 import { useWalkMeta, useWalkTelemetry } from "@/hooks/useWalkStream"
 
 const LABEL: Record<WalkStateName, string> = {
@@ -98,7 +98,7 @@ export default function StatusBar(props: { onOpenSidebar(): void }) {
         <Button
           variant="destructive"
           size="sm"
-          disabled={!isRunning(state) || stopping}
+          disabled={!canStop(state) || stopping}
           onClick={onStop}
         >
           {stopping ? <Spinner className="size-4" /> : <Square className="size-4" />}
