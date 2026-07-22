@@ -475,3 +475,82 @@ async def test_a_slow_set_reports_reconnecting():
         await service.wait_finished()
         states = [m["state"] for m in _drain(queue) if m["type"] == "state"]
     assert "reconnecting" in states
+
+
+async def test_pin_holds_the_session_and_reports_pinned():
+    session = FakeSession()
+    service, _ = make_service(session=session)
+    status = await service.pin(48.858666, 2.293991)
+    assert status.state is WalkState.PINNED
+    assert status.fix is not None
+    assert (status.fix.lat, status.fix.lon) == (48.858666, 2.293991)
+    assert status.fix.speed_mps == 0
+    assert status.fix.distance_m == 0
+    assert status.stats is None
+    assert status.route == []
+    # The session is held open (set once, never stopped) until stop().
+    assert session.sets == [(48.858666, 2.293991)]
+    assert session.stopped is False
+
+
+async def test_stop_clears_a_pin():
+    session = FakeSession()
+    service, _ = make_service(session=session)
+    await service.pin(48.858666, 2.293991)
+    await service.stop()
+    assert session.stopped is True
+    assert session.cleared is True
+    assert service.status().state is WalkState.IDLE
+
+
+async def test_re_pinning_reuses_the_open_session():
+    session = FakeSession()
+    service, _ = make_service(session=session)
+    await service.pin(48.858666, 2.293991)
+    await service.pin(25.0, 121.0)
+    # One session, two sets, still open.
+    assert session.start_calls == 1
+    assert session.sets == [(48.858666, 2.293991), (25.0, 121.0)]
+    assert session.stopped is False
+
+
+async def test_pin_while_walking_is_refused():
+    gate = asyncio.Event()
+    session = FakeSession(start_gate=gate)
+    service, _ = make_service(session=session)
+    # Start a walk and leave it mid-connect so a walk is unambiguously active.
+    task = asyncio.create_task(service.start(spec()))
+    await session.entered_start.wait()
+    gate.set()
+    await task
+    with pytest.raises(WalkAlreadyRunning):
+        await service.pin(48.858666, 2.293991)
+    await service.stop()
+
+
+async def test_pin_tears_down_the_session_on_device_failure():
+    session = FakeSession(fail_with=RuntimeError("device unreachable"), fail_on=1)
+    service, _ = make_service(session=session)
+    with pytest.raises(RuntimeError):
+        await service.pin(48.858666, 2.293991)
+    # The half-open session was cleaned up, and the service is idle with the
+    # failure recorded.
+    assert session.stopped is True
+    assert service.status().state is WalkState.IDLE
+    assert service.status().error is not None
+
+
+async def test_starting_a_walk_replaces_a_pin():
+    pin_session = FakeSession()
+    walk_session = FakeSession()
+    sessions = iter([pin_session, walk_session])
+    service, _ = make_service(session=pin_session)
+    service._session_factory = lambda: next(sessions)  # pin gets one, walk the next
+    await service.pin(48.858666, 2.293991)
+    await service.start(spec())
+    # The pinned session was released (stopped, not cleared) and the walk owns
+    # its own session now.
+    assert pin_session.stopped is True
+    assert pin_session.cleared is False
+    assert service.status().state is WalkState.WALKING
+    await service.stop()

@@ -19,6 +19,7 @@ class WalkState(str, Enum):
     RECONNECTING = "reconnecting"
     FINISHED = "finished"
     ERROR = "error"
+    PINNED = "pinned"
 
 
 class FixOut(BaseModel):
