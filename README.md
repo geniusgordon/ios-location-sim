@@ -115,7 +115,17 @@ costing = "pedestrian"
 waypoints = [[25.033, 121.5654], [25.038, 121.568], [25.033, 121.5654]]
 profile = "walk"
 loop = true
+
+[places.home]
+point = [25.033, 121.565]
 ```
+
+**Presets** are routes with waypoints, profile, and loop settings, loaded via the GUI
+or `ios-loc walk <name>`. **Places** are single coordinates saved from the GUI's Pin
+control, listed under Places in the route library, and clicking one sets the device
+there. Deleting a route or place from the GUI rewrites this file, preserving comments
+and hand formatting outside the `[presets.*]` and `[places.*]` tables — `[profiles.*]`
+and every other section are untouched.
 
 ## Notes
 

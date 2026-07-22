@@ -119,7 +119,9 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   route while the library is open is a supported flow. That failure passed
   every test. The `data-[side=left]:` prefix on the overrides is load-bearing:
   an unprefixed class loses to `sheet.tsx`'s own variant-prefixed
-  `inset-y-0`/`h-full` under tailwind-merge.
+  `inset-y-0`/`h-full` under tailwind-merge. Row deletion confirms inline
+  (local row state) rather than via an AlertDialog, for the same reason: a
+  modal dialog would reintroduce the backdrop the sheet exists to avoid.
 - **One `StartRequest` builder.** `web/ui/src/lib/startBody.ts` is the only
   place a start body is constructed. Two inline copies (the quick bar and the
   start form) is how the two paths silently drifted apart — a named route must
@@ -139,6 +141,12 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   accumulated state). `stop()` clears a pin exactly as it ends a walk — one
   Stop button for both. The pin reaches the browser as a `"fix"` broadcast so
   the map's live dot moves; it produces no per-second traffic.
+- **Each config writer regenerates only its own table kind.** `_write_tables(path,
+  "presets" | "places", …)` strips and re-renders one kind and preserves the rest
+  byte for byte — a place save must never disturb `[presets.*]`, and neither may
+  touch a hand-written `[profiles.*]` or its comments. `load_config` reads only
+  `profiles` and `presets` and ignores unknown top-level tables, which is what
+  lets `[places.*]` coexist without a loader change.
 
 ## Config
 
