@@ -1,6 +1,5 @@
 /**
- * The Valhalla costing models the UI offers. Shared by the sidebar's route
- * editor and the map-first quick-start bar — two selects writing the same
- * `costing` state, so the list must have exactly one home.
+ * The Valhalla costing models the UI offers, shown in the dock's Options
+ * popover (`RouteOptions.tsx`)'s "Routing mode" select.
  */
 export const COSTINGS = ["pedestrian", "bicycle", "auto"]

@@ -10,7 +10,7 @@ import RouteOptions from "@/components/RouteOptions"
 import { formatDistance, formatDuration, formatSpeed } from "@/lib/format"
 import type { DraftRoute, DraftSettings } from "@/lib/draft"
 import { canStart, startBody } from "@/lib/startBody"
-import { canStop } from "@/state/walkReducer"
+import { canStop, isRunning } from "@/state/walkReducer"
 import { useWalkMeta, useWalkTelemetry } from "@/hooks/useWalkStream"
 
 const LABEL: Record<WalkStateName, string> = {
@@ -59,7 +59,10 @@ function Stat(props: { label: string; value: string; truncate?: boolean }) {
  * and nothing else -- pulling `useWalkTelemetry` up into `Dock` would re-render
  * the map's siblings once a second.
  */
-function LiveDock() {
+function LiveDock(props: {
+  pinArmed: boolean
+  onPinArmedChange(armed: boolean): void
+}) {
   const { fix, stats, state } = useWalkTelemetry()
   const meta = useWalkMeta()
   const [stopping, setStopping] = useState(false)
@@ -95,6 +98,13 @@ function LiveDock() {
           </span>
         ) : null}
         {stopError ? <span className="text-destructive text-xs">{stopError}</span> : null}
+        {state === "pinned" ? (
+          <PinControl
+            armed={props.pinArmed}
+            onArmedChange={props.onPinArmedChange}
+            disabled={isRunning(state)}
+          />
+        ) : null}
         <Button
           variant="destructive"
           size="sm"
@@ -133,6 +143,10 @@ export interface DockProps {
   onOpenLibrary(): void
   onSaved(name: string): void
   onStarted(): void
+  /** True while a finished/lost run's summary should stay on screen even
+   *  though the draft route (still on the map) is non-empty. Cleared by
+   *  App.tsx on the next route edit, load, or walk start. */
+  showSummary: boolean
 }
 
 export default function Dock(props: DockProps) {
@@ -141,10 +155,11 @@ export default function Dock(props: DockProps) {
   const [startError, setStartError] = useState<string | null>(null)
 
   // Telemetry while the device is held, and afterwards while the last run's
-  // summary is still the most useful thing on screen. Drawing a fresh route is
-  // what dismisses a `finished` / `device lost` summary -- without that second
-  // clause the dock would never leave those states and the app would be stuck.
-  const live = canStop(meta.state) || (meta.state !== "idle" && props.route.waypoints.length === 0)
+  // summary is still the most useful thing on screen -- `showSummary` is an
+  // explicit user-visible flag App.tsx sets on `finished`/`error` and clears
+  // on the next route edit, load, or walk start, so a completed run does not
+  // vanish the instant the dock re-evaluates against an unchanged route.
+  const live = canStop(meta.state) || props.showSummary
 
   const onStart = async () => {
     setStarting(true)
@@ -162,7 +177,7 @@ export default function Dock(props: DockProps) {
   return (
     <div className="bg-background/95 flex h-14 items-center gap-4 border-t px-4 py-2 backdrop-blur">
       {live ? (
-        <LiveDock />
+        <LiveDock pinArmed={props.pinArmed} onPinArmedChange={props.onPinArmedChange} />
       ) : props.route.waypoints.length === 0 ? (
         <>
           <Button variant="ghost" size="icon" aria-label="Saved routes" onClick={props.onOpenLibrary}>
@@ -185,7 +200,7 @@ export default function Dock(props: DockProps) {
             <PinControl
               armed={props.pinArmed}
               onArmedChange={props.onPinArmedChange}
-              disabled={false}
+              disabled={isRunning(meta.state)}
             />
           </div>
         </>

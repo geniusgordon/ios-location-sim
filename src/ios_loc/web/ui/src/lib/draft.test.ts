@@ -77,6 +77,6 @@ describe("the name", () => {
 
 describe("clearRoute", () => {
   it("empties the waypoints and the name", () => {
-    expect(clearRoute()).toEqual(emptyRoute)
+    expect(clearRoute()).toEqual({ waypoints: [], name: null })
   })
 })

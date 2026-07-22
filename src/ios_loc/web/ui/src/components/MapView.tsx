@@ -54,12 +54,6 @@ export interface MapViewProps {
   onMapClick(point: LatLon): void
   onWaypointDrag(index: number, point: LatLon): void
   onWaypointClick(index: number): void
-  /**
-   * Overlays drawn on top of the canvas (the quick-start bar). They render
-   * inside the map's own `relative` box so they can position against it, but
-   * MapView never reads their props — a slot, not a dozen pass-throughs.
-   */
-  children?: React.ReactNode
 }
 
 export default function MapView(props: MapViewProps) {
@@ -238,7 +232,6 @@ export default function MapView(props: MapViewProps) {
   return (
     <div className="relative h-full w-full">
       <div ref={container} className="h-full w-full" />
-      {props.children}
       <Button
         variant="secondary"
         size="icon"

@@ -56,7 +56,7 @@ export function removeLast(route: DraftRoute): DraftRoute {
 }
 
 export function clearRoute(): DraftRoute {
-  return emptyRoute
+  return { waypoints: [], name: null }
 }
 
 /**

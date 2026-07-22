@@ -103,7 +103,7 @@ export default function RouteOptions(props: RouteOptionsProps) {
               <Label htmlFor="opt-profile">Profile</Label>
               <Select
                 value={props.settings.profile ?? ""}
-                onValueChange={(value) => set("profile", value === "" ? null : (value ?? null))}
+                onValueChange={(value) => set("profile", value === "" ? null : value)}
               >
                 <SelectTrigger id="opt-profile">
                   <SelectValue placeholder="walk" />

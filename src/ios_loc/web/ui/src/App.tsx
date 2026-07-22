@@ -34,6 +34,11 @@ export default function App() {
   const [settings, setSettings] = useState<DraftSettings>(defaultSettings)
   const [pinArmed, setPinArmed] = useState(false)
   const [pinError, setPinError] = useState<string | null>(null)
+  // Keeps a finished/lost run's summary on screen after the dock would
+  // otherwise fall back to the drawing branch (the waypoints are still
+  // there). Dismissed by anything that means the user has moved on: editing
+  // the route, loading a saved one, or starting a new walk.
+  const [showSummary, setShowSummary] = useState(false)
 
   // Only the newest load may write state. Two overlapping fetches (StrictMode
   // double-invokes the mount effect in dev) would otherwise let whichever
@@ -68,6 +73,12 @@ export default function App() {
   // Map-first: editable whenever no walk holds the device, library open or not.
   const editing = !isRunning(meta.state)
 
+  // A finished run or a lost device is the most useful thing on screen until
+  // the user does something that means they've moved past it.
+  useEffect(() => {
+    if (meta.state === "finished" || meta.state === "error") setShowSummary(true)
+  }, [meta.state])
+
   // One debounced, server-cached Valhalla call, gated on the device being free
   // so a map-first route draws as a line rather than disconnected dots.
   const preview = useRoutePreview(route.waypoints, settings.costing, !offline && editing)
@@ -86,6 +97,7 @@ export default function App() {
       return
     }
     setPinError(null)
+    setShowSummary(false)
     setRoute((r) => addWaypoint(r, point))
   }
 
@@ -97,8 +109,14 @@ export default function App() {
           draftRoute={preview.route}
           editing={editing}
           onMapClick={onMapClick}
-          onWaypointDrag={(index, point) => setRoute((r) => moveWaypoint(r, index, point))}
-          onWaypointClick={(index) => setRoute((r) => removeWaypoint(r, index))}
+          onWaypointDrag={(index, point) => {
+            setShowSummary(false)
+            setRoute((r) => moveWaypoint(r, index, point))
+          }}
+          onWaypointClick={(index) => {
+            setShowSummary(false)
+            setRoute((r) => removeWaypoint(r, index))
+          }}
         />
       </div>
       <Dock
@@ -114,14 +132,24 @@ export default function App() {
         pinArmed={pinArmed}
         onPinArmedChange={setPinArmed}
         pinError={pinError}
-        onRemoveLast={() => setRoute((r) => removeLast(r))}
-        onClear={() => setRoute(clearRoute())}
+        showSummary={showSummary}
+        onRemoveLast={() => {
+          setShowSummary(false)
+          setRoute((r) => removeLast(r))
+        }}
+        onClear={() => {
+          setShowSummary(false)
+          setRoute(clearRoute())
+        }}
         onOpenLibrary={() => setLibraryOpen(true)}
         onSaved={(name) => {
           setRoute((r) => ({ ...r, name }))
           reloadPresets()
         }}
-        onStarted={() => setLibraryOpen(false)}
+        onStarted={() => {
+          setShowSummary(false)
+          setLibraryOpen(false)
+        }}
       />
       <RouteLibrary
         open={libraryOpen}
@@ -133,6 +161,7 @@ export default function App() {
         onReload={reloadPresets}
         onSelect={(preset) => {
           const next = loadPreset(preset, settings)
+          setShowSummary(false)
           setRoute(next.route)
           setSettings(next.settings)
           setLibraryOpen(false)

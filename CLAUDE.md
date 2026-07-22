@@ -12,7 +12,7 @@ used to walk/cycle routes for Pikmin Bloom. Python 3.13, `uv`-managed, package a
 
 ```bash
 uv sync                              # install
-uv run pytest -q                     # full suite (193 tests, ~2s, no device/network needed)
+uv run pytest -q                     # full suite (205 tests, ~2s, no device/network needed)
 uv run pytest tests/test_walker.py::test_name -q   # single test
 uv run ios-loc --help
 uv run python scripts/export_openapi.py            # regenerate src/ios_loc/web/ui/api-schema.json
