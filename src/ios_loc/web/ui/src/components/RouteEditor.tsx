@@ -15,9 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { COSTINGS } from "@/lib/costings"
 import { formatDistance } from "@/lib/format"
-
-const COSTINGS = ["pedestrian", "bicycle", "auto"]
 
 export interface RouteEditorProps {
   waypoints: LatLon[]

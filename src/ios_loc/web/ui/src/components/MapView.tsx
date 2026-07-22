@@ -3,7 +3,6 @@ import maplibregl from "maplibre-gl"
 import { Crosshair } from "lucide-react"
 import type { LatLon } from "@/api/types"
 import CoordBox from "@/components/CoordBox"
-import QuickStartBar from "@/components/QuickStartBar"
 import { Button } from "@/components/ui/button"
 import { fromLngLat, toLngLat } from "@/lib/coords"
 import { initialFollow, onRecenter, onUserPan, shouldCenter } from "@/lib/follow"
@@ -56,12 +55,12 @@ export interface MapViewProps {
   onMapClick(point: LatLon): void
   onWaypointDrag(index: number, point: LatLon): void
   onWaypointClick(index: number): void
-  // Quick-start bar wiring.
-  lengthM: number | null
-  costing: string
-  onRemoveLast(): void
-  onClearWaypoints(): void
-  onStarted(): void
+  /**
+   * Overlays drawn on top of the canvas (the quick-start bar). They render
+   * inside the map's own `relative` box so they can position against it, but
+   * MapView never reads their props — a slot, not a dozen pass-throughs.
+   */
+  children?: React.ReactNode
 }
 
 export default function MapView(props: MapViewProps) {
@@ -241,14 +240,7 @@ export default function MapView(props: MapViewProps) {
     <div className="relative h-full w-full">
       <div ref={container} className="h-full w-full" />
       <CoordBox />
-      <QuickStartBar
-        waypoints={props.draftWaypoints}
-        lengthM={props.lengthM}
-        costing={props.costing}
-        onRemoveLast={props.onRemoveLast}
-        onClear={props.onClearWaypoints}
-        onStarted={props.onStarted}
-      />
+      {props.children}
       <Button
         variant="secondary"
         size="icon"
