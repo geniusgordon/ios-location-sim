@@ -5,10 +5,12 @@ import { errorText, startWalk, stopWalk } from "@/api/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
+import DeviceChip from "@/components/DeviceChip"
 import PinControl from "@/components/PinControl"
 import RouteOptions from "@/components/RouteOptions"
 import { formatDistance, formatDuration, formatSpeed } from "@/lib/format"
 import type { DraftRoute, DraftSettings } from "@/lib/draft"
+import type { DeviceIndicator } from "@/lib/deviceIndicator"
 import { canStart, startBody } from "@/lib/startBody"
 import { canStop, isRunning, showsLiveDock } from "@/state/walkReducer"
 import { useWalkMeta, useWalkTelemetry } from "@/hooks/useWalkStream"
@@ -59,7 +61,7 @@ function Stat(props: { label: string; value: string; truncate?: boolean }) {
  * and nothing else -- pulling `useWalkTelemetry` up into `Dock` would re-render
  * the map's siblings once a second.
  */
-function LiveDock() {
+function LiveDock({ indicator }: { indicator: DeviceIndicator }) {
   const { fix, stats, state } = useWalkTelemetry()
   const meta = useWalkMeta()
   const [stopping, setStopping] = useState(false)
@@ -80,6 +82,7 @@ function LiveDock() {
   return (
     <>
       <Badge variant={tone(state)}>{chipLabel(state, fix?.paused ?? false)}</Badge>
+      <DeviceChip indicator={indicator} />
       <Stat label="elapsed" value={formatDuration(stats?.elapsed_s ?? 0)} />
       <Stat label="distance" value={formatDistance(stats?.distance_m ?? 0)} />
       <Stat label="speed" value={formatSpeed(fix?.speed_mps ?? 0)} />
@@ -145,6 +148,10 @@ export interface DockProps {
    *  though the draft route (still on the map) is non-empty. Cleared by
    *  App.tsx on the next route edit, load, or walk start. */
   showSummary: boolean
+  /** The device-connectivity chip's display state -- derived in App.tsx from
+   *  either the walk state (while the service holds the device) or a polled
+   *  probe (otherwise). */
+  deviceIndicator: DeviceIndicator
 }
 
 export default function Dock(props: DockProps) {
@@ -178,12 +185,13 @@ export default function Dock(props: DockProps) {
   return (
     <div className="bg-background/95 flex h-14 items-center gap-4 border-t px-4 py-2 backdrop-blur">
       {live ? (
-        <LiveDock />
+        <LiveDock indicator={props.deviceIndicator} />
       ) : props.route.waypoints.length === 0 ? (
         <>
           <Button variant="ghost" size="icon" aria-label="Saved routes" onClick={props.onOpenLibrary}>
             <Menu className="size-4" />
           </Button>
+          <DeviceChip indicator={props.deviceIndicator} />
           <span className="text-muted-foreground text-sm">Tap the map to draw a route</span>
           {/* A failed /api/presets also empties the Profile select, and an empty
               select with no explanation reads as a bug in the app. */}
@@ -215,6 +223,7 @@ export default function Dock(props: DockProps) {
           <Button variant="ghost" size="icon" aria-label="Saved routes" onClick={props.onOpenLibrary}>
             <Menu className="size-4" />
           </Button>
+          <DeviceChip indicator={props.deviceIndicator} />
           <span className="min-w-0 truncate text-sm">
             {props.route.name ? (
               <span className="mr-2 font-medium">{props.route.name}</span>

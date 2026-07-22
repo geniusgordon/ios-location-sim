@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/device": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Device Status */
+        get: operations["device_status_api_device_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/pin": {
         parameters: {
             query?: never;
@@ -131,6 +148,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** DeviceStatus */
+        DeviceStatus: {
+            /** Connected */
+            connected: boolean;
+            /** Detail */
+            detail: string;
+            /** Reason */
+            reason: string;
+        };
         /** FixOut */
         FixOut: {
             /** Distance M */
@@ -336,6 +362,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    device_status_api_device_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceStatus"];
+                };
+            };
+        };
+    };
     set_pin_api_pin_post: {
         parameters: {
             query?: never;

@@ -1,4 +1,5 @@
 import type {
+  DeviceStatus,
   PinRequest,
   Place,
   PlaceIn,
@@ -127,6 +128,10 @@ export function startWalk(body: StartRequest, signal?: AbortSignal): Promise<Wal
 
 export function stopWalk(signal?: AbortSignal): Promise<WalkStatus> {
   return request<WalkStatus>("/api/walk", { method: "DELETE", signal })
+}
+
+export function getDeviceStatus(signal?: AbortSignal): Promise<DeviceStatus> {
+  return request<DeviceStatus>("/api/device", { method: "GET", signal })
 }
 
 export function pinLocation(

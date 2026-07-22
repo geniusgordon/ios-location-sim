@@ -16,6 +16,7 @@ export type PinRequest = S["PinRequest"]
 export type Place = S["PlaceOut"]
 export type PlaceIn = S["PlaceIn"]
 export type PlacesList = S["PlacesListOut"]
+export type DeviceStatus = S["DeviceStatus"]
 
 /** `[latitude, longitude]` — the wire order everywhere in this API. */
 export type LatLon = [number, number]

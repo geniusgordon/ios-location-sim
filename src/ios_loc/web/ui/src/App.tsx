@@ -4,6 +4,7 @@ import { deletePlace, deletePreset, errorText, getPlaces, getPresets, pinLocatio
 import Dock from "@/components/Dock"
 import MapView from "@/components/MapView"
 import RouteLibrary from "@/components/RouteLibrary"
+import { useDeviceStatus } from "@/hooks/useDeviceStatus"
 import { useRoutePreview } from "@/hooks/useRoutePreview"
 import { useWalkStream, useWalkMeta } from "@/hooks/useWalkStream"
 import {
@@ -18,7 +19,8 @@ import {
   type DraftRoute,
   type DraftSettings,
 } from "@/lib/draft"
-import { isRunning } from "@/state/walkReducer"
+import { deviceIndicator } from "@/lib/deviceIndicator"
+import { canStop, isRunning } from "@/state/walkReducer"
 
 export default function App() {
   useWalkStream()
@@ -124,6 +126,11 @@ export default function App() {
   // Map-first: editable whenever no walk holds the device, library open or not.
   const editing = !isRunning(meta.state)
 
+  // Paused while the service already holds the device: the walk state is the
+  // truth then, and a probe would open a second tunnel.
+  const deviceStatus = useDeviceStatus(canStop(meta.state))
+  const indicator = deviceIndicator(meta.state, deviceStatus)
+
   // A finished run or a lost device is the most useful thing on screen until
   // the user does something that means they've moved past it.
   useEffect(() => {
@@ -171,6 +178,7 @@ export default function App() {
         />
       </div>
       <Dock
+        deviceIndicator={indicator}
         route={route}
         settings={settings}
         onSettingsChange={setSettings}
