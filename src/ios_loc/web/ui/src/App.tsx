@@ -144,13 +144,12 @@ export default function App() {
   const onMapClick = (point: LatLon) => {
     if (pinArmed) {
       // Stay armed: setting several locations in a row is the whole point.
-      setPinError(null)
       setShowSummary(false)
-      void pinLocation(point[0], point[1])
-        .then(() => handlePinned(point))
-        .catch((error: unknown) => {
-          setPinError(errorText(error))
-        })
+      setPinError(null)
+      handlePinned(point) // pick: marker + fills save form (already on screen, no recenter)
+      if (indicator.connected) {
+        void pinLocation(point[0], point[1]).catch((error: unknown) => setPinError(errorText(error)))
+      }
       return
     }
     setPinError(null)
@@ -166,6 +165,7 @@ export default function App() {
           draftRoute={preview.route}
           editing={editing}
           centerOn={centerOn}
+          pickedPoint={canStop(meta.state) ? null : lastPin}
           onMapClick={onMapClick}
           onWaypointDrag={(index, point) => {
             setShowSummary(false)
@@ -179,6 +179,7 @@ export default function App() {
       </div>
       <Dock
         deviceIndicator={indicator}
+        deviceConnected={indicator.connected}
         route={route}
         settings={settings}
         onSettingsChange={setSettings}
@@ -237,11 +238,10 @@ export default function App() {
           setPinArmed(false)
           setPinError(null)
           setLibraryOpen(false)
-          void pinLocation(point[0], point[1])
-            .then(() => handlePinned(point, { recenter: true }))
-            .catch((error: unknown) => {
-              setPinError(errorText(error))
-            })
+          handlePinned(point, { recenter: true })
+          if (indicator.connected) {
+            void pinLocation(point[0], point[1]).catch((error: unknown) => setPinError(errorText(error)))
+          }
         }}
         onDeletePreset={async (name) => {
           await deletePreset(name)

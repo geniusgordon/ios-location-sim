@@ -13,6 +13,9 @@ export interface PinControlProps {
   onArmedChange(armed: boolean): void
   /** A walk owns the device -- setting mid-walk 409s. Disables the control. */
   disabled: boolean
+  /** Whether a device is currently reachable. When false, Set/tap/place-select
+   *  still picks (marker + save form) but never pushes to a phone. */
+  deviceConnected: boolean
   /** The currently set/target coordinate, shown in the control and saved by Save. */
   lastPin: LatLon | null
   /** Called after a coordinate-typed set. `recenter` asks the map to fly there. */
@@ -48,12 +51,13 @@ export default function PinControl(props: PinControlProps) {
       setError(shown.error)
       return
     }
-    setPinning(true)
     setError(null)
+    props.onPinned(shown.point, { recenter: true }) // pick: marker + fills save form
+    // Deliberately does NOT disarm: consecutive sets are the point.
+    if (!props.deviceConnected) return // no device: picked for saving only
+    setPinning(true)
     try {
       await pinLocation(shown.point[0], shown.point[1])
-      props.onPinned(shown.point, { recenter: true })
-      // Deliberately does NOT disarm: consecutive sets are the point.
     } catch (err) {
       setError(errorText(err))
     } finally {
@@ -145,6 +149,11 @@ export default function PinControl(props: PinControlProps) {
             <Button size="sm" disabled={pinning || props.disabled} onClick={onSubmit}>
               {pinning ? <Spinner className="size-4" /> : <MapPin className="size-4" />} Set to coordinates
             </Button>
+            {!props.deviceConnected && !props.disabled ? (
+              <p className="text-muted-foreground text-xs">
+                No device connected — the coordinate is saved as a place, not pushed to a phone.
+              </p>
+            ) : null}
             {error ? (
               <p className="text-destructive text-xs" title={error}>
                 {error}

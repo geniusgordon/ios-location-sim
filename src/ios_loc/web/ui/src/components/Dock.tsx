@@ -152,6 +152,9 @@ export interface DockProps {
    *  either the walk state (while the service holds the device) or a polled
    *  probe (otherwise). */
   deviceIndicator: DeviceIndicator
+  /** Whether a device is currently reachable -- threaded to PinControl so it
+   *  can pick without pushing when there is nothing to push to. */
+  deviceConnected: boolean
 }
 
 export default function Dock(props: DockProps) {
@@ -215,6 +218,7 @@ export default function Dock(props: DockProps) {
               onPlaceSaved={props.onPlaceSaved}
               held={props.held}
               onClear={props.onClearPin}
+              deviceConnected={props.deviceConnected}
             />
           </div>
         </>
@@ -272,6 +276,7 @@ export default function Dock(props: DockProps) {
               onPlaceSaved={props.onPlaceSaved}
               held={props.held}
               onClear={props.onClearPin}
+              deviceConnected={props.deviceConnected}
             />
             <RouteOptions
               route={props.route}

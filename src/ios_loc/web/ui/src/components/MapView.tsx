@@ -58,6 +58,10 @@ export interface MapViewProps {
    *  coordinate and saved-place sets; a map-tap set leaves it unchanged (the
    *  tapped point is already on screen). */
   centerOn: { point: LatLon; nonce: number } | null
+  /** The picked-but-not-necessarily-pushed coordinate (map tap, typed
+   *  coordinate, or saved place). Hidden while the device holds a location
+   *  (pinned/walking) -- the live dot shows that instead. */
+  pickedPoint: LatLon | null
 }
 
 export default function MapView(props: MapViewProps) {
@@ -86,7 +90,7 @@ export default function MapView(props: MapViewProps) {
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right")
 
     m.on("load", () => {
-      for (const id of ["route", "draft-route", "trail", "waypoints", "live"]) {
+      for (const id of ["route", "draft-route", "trail", "waypoints", "live", "pick"]) {
         m.addSource(id, { type: "geojson", data: EMPTY })
       }
       m.addLayer({
@@ -125,6 +129,17 @@ export default function MapView(props: MapViewProps) {
         paint: {
           "circle-radius": 8,
           "circle-color": "#16a34a",
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 3,
+        },
+      })
+      m.addLayer({
+        id: "pick-dot",
+        type: "circle",
+        source: "pick",
+        paint: {
+          "circle-radius": 8,
+          "circle-color": "#f59e0b",
           "circle-stroke-color": "#ffffff",
           "circle-stroke-width": 3,
         },
@@ -230,6 +245,13 @@ export default function MapView(props: MapViewProps) {
     // Keyed on the nonce so repeated sets to the same/nearby point still fire.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, props.centerOn?.nonce])
+
+  // --- picked-but-not-pushed coordinate --------------------------------------
+  useEffect(() => {
+    if (!ready) return
+    const src = map.current?.getSource("pick") as maplibregl.GeoJSONSource | undefined
+    src?.setData(props.pickedPoint ? pointsOf([props.pickedPoint]) : EMPTY)
+  }, [ready, props.pickedPoint])
 
   // --- draft route + waypoints (from the editor) ----------------------------
   useEffect(() => {
