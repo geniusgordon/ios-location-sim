@@ -66,7 +66,9 @@ export function applyMessage(model: WalkModel, msg: ServerMessage): WalkModel {
         state: msg.state,
         fix: msg.fix,
         stats: msg.stats,
-        trail: tail([...model.trail, msg.fix]),
+        // A pinned "fix" is a set location, not a walk step: keep it out of the
+        // trail so the map draws only the live dot, never an orange path line.
+        trail: msg.state === "pinned" ? [] : tail([...model.trail, msg.fix]),
       }
   }
 }
@@ -127,4 +129,14 @@ export function isRunning(state: WalkStateName): boolean {
 /** True while the device is held — a walk OR a pin — the states with a live Stop. */
 export function canStop(state: WalkStateName): boolean {
   return isRunning(state) || state === "pinned"
+}
+
+/**
+ * Whether the dock shows the live telemetry view instead of the editor. A walk
+ * (or a finished/lost run whose summary is still up) does; a bare pinned
+ * location does NOT -- it is set-and-kept in place from the editor dock, so a
+ * dock takeover would block setting the next location.
+ */
+export function showsLiveDock(state: WalkStateName, showSummary: boolean): boolean {
+  return isRunning(state) || showSummary
 }
