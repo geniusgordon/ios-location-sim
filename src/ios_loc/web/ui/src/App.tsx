@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { LatLon, Preset } from "@/api/types"
-import { errorText, getPresets, pinLocation } from "@/api/client"
+import type { LatLon, Place, Preset } from "@/api/types"
+import { deletePlace, deletePreset, errorText, getPlaces, getPresets, pinLocation } from "@/api/client"
 import Dock from "@/components/Dock"
 import MapView from "@/components/MapView"
 import RouteLibrary from "@/components/RouteLibrary"
@@ -25,6 +25,10 @@ export default function App() {
 
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [presets, setPresets] = useState<Preset[]>([])
+  const [places, setPlaces] = useState<Place[]>([])
+  // The last point the device was pinned at, from either pin path. Gates the
+  // "save this place" form: there is never a save button with nothing to save.
+  const [lastPin, setLastPin] = useState<LatLon | null>(null)
   const [profiles, setProfiles] = useState<string[]>([])
   const [offline, setOffline] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -69,6 +73,19 @@ export default function App() {
     reloadPresets()
   }, [reloadPresets])
 
+  const reloadPlaces = useCallback(() => {
+    getPlaces()
+      .then((data) => setPlaces(data.places))
+      .catch(() => {
+        // A places failure is not worth blanking the sheet: /api/presets
+        // already surfaces a broken config, and this call reads the same file.
+      })
+  }, [])
+
+  useEffect(() => {
+    reloadPlaces()
+  }, [reloadPlaces])
+
   const meta = useWalkMeta()
   // Map-first: editable whenever no walk holds the device, library open or not.
   const editing = !isRunning(meta.state)
@@ -91,9 +108,11 @@ export default function App() {
       // even a broadcast failure lands in `meta.error`, which only renders
       // inside LiveDock -- invisible while the dock is showing the route
       // editor. Surface the server's own text here instead.
-      void pinLocation(point[0], point[1]).catch((error: unknown) => {
-        setPinError(errorText(error))
-      })
+      void pinLocation(point[0], point[1])
+        .then(() => setLastPin(point))
+        .catch((error: unknown) => {
+          setPinError(errorText(error))
+        })
       return
     }
     setPinError(null)
@@ -132,6 +151,9 @@ export default function App() {
         pinArmed={pinArmed}
         onPinArmedChange={setPinArmed}
         pinError={pinError}
+        lastPin={lastPin}
+        onPinned={setLastPin}
+        onPlaceSaved={reloadPlaces}
         showSummary={showSummary}
         onRemoveLast={() => {
           setShowSummary(false)
@@ -155,6 +177,7 @@ export default function App() {
         open={libraryOpen}
         onOpenChange={setLibraryOpen}
         presets={presets}
+        places={places}
         selectedName={route.name}
         loading={loading}
         loadError={loadError}
@@ -165,6 +188,29 @@ export default function App() {
           setRoute(next.route)
           setSettings(next.settings)
           setLibraryOpen(false)
+        }}
+        onSelectPlace={(place) => {
+          const point: LatLon = [place.point[0], place.point[1]]
+          setPinArmed(false)
+          setPinError(null)
+          setLibraryOpen(false)
+          void pinLocation(point[0], point[1])
+            .then(() => setLastPin(point))
+            .catch((error: unknown) => {
+              setPinError(errorText(error))
+            })
+        }}
+        onDeletePreset={async (name) => {
+          await deletePreset(name)
+          // Deleting the loaded route drops its name but keeps its geometry:
+          // starting by a name that no longer exists would 404 instead of
+          // walking. Same rule every edit already follows.
+          setRoute((r) => (r.name === name ? { ...r, name: null } : r))
+          reloadPresets()
+        }}
+        onDeletePlace={async (name) => {
+          await deletePlace(name)
+          reloadPlaces()
         }}
       />
     </div>

@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Menu, Play, Square, Trash2, Undo2 } from "lucide-react"
-import type { WalkStateName } from "@/api/types"
+import type { LatLon, WalkStateName } from "@/api/types"
 import { errorText, startWalk, stopWalk } from "@/api/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -62,6 +62,10 @@ function Stat(props: { label: string; value: string; truncate?: boolean }) {
 function LiveDock(props: {
   pinArmed: boolean
   onPinArmedChange(armed: boolean): void
+  /** The last pinned point, or null. Gates the save-place form. */
+  lastPin: LatLon | null
+  onPinned(point: LatLon): void
+  onPlaceSaved(): void
 }) {
   const { fix, stats, state } = useWalkTelemetry()
   const meta = useWalkMeta()
@@ -103,6 +107,9 @@ function LiveDock(props: {
             armed={props.pinArmed}
             onArmedChange={props.onPinArmedChange}
             disabled={isRunning(state)}
+            lastPin={props.lastPin}
+            onPinned={props.onPinned}
+            onPlaceSaved={props.onPlaceSaved}
           />
         ) : null}
         <Button
@@ -134,6 +141,10 @@ export interface DockProps {
   offline: boolean
   pinArmed: boolean
   onPinArmedChange(armed: boolean): void
+  /** The last pinned point, or null. Gates the save-place form. */
+  lastPin: LatLon | null
+  onPinned(point: LatLon): void
+  onPlaceSaved(): void
   /** A failed set-location pin (map-tap while armed). LiveDock never mounts
    *  for this failure -- pin errors leave the dock in one of the other two
    *  branches -- so it is rendered here instead of via `meta.error`. */
@@ -177,7 +188,13 @@ export default function Dock(props: DockProps) {
   return (
     <div className="bg-background/95 flex h-14 items-center gap-4 border-t px-4 py-2 backdrop-blur">
       {live ? (
-        <LiveDock pinArmed={props.pinArmed} onPinArmedChange={props.onPinArmedChange} />
+        <LiveDock
+          pinArmed={props.pinArmed}
+          onPinArmedChange={props.onPinArmedChange}
+          lastPin={props.lastPin}
+          onPinned={props.onPinned}
+          onPlaceSaved={props.onPlaceSaved}
+        />
       ) : props.route.waypoints.length === 0 ? (
         <>
           <Button variant="ghost" size="icon" aria-label="Saved routes" onClick={props.onOpenLibrary}>
@@ -201,6 +218,9 @@ export default function Dock(props: DockProps) {
               armed={props.pinArmed}
               onArmedChange={props.onPinArmedChange}
               disabled={isRunning(meta.state)}
+              lastPin={props.lastPin}
+              onPinned={props.onPinned}
+              onPlaceSaved={props.onPlaceSaved}
             />
           </div>
         </>

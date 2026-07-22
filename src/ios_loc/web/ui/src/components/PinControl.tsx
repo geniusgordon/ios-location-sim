@@ -1,6 +1,7 @@
 import { useState } from "react"
-import { Keyboard, MapPin } from "lucide-react"
-import { errorText, pinLocation } from "@/api/client"
+import { Keyboard, MapPin, Save } from "lucide-react"
+import type { LatLon } from "@/api/types"
+import { errorText, pinLocation, savePlace } from "@/api/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -13,12 +14,19 @@ export interface PinControlProps {
   onArmedChange(armed: boolean): void
   /** A walk owns the device -- pinning mid-walk 409s and would cost distance. */
   disabled: boolean
+  /** The last pinned point, or null. No pin yet means no save form. */
+  lastPin: LatLon | null
+  onPinned(point: LatLon): void
+  onPlaceSaved(): void
 }
 
 export default function PinControl(props: PinControlProps) {
   const [text, setText] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pinning, setPinning] = useState(false)
+  const [placeName, setPlaceName] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const onSubmit = async () => {
     const parsed = parseLatLon(text)
@@ -30,11 +38,27 @@ export default function PinControl(props: PinControlProps) {
     setError(null)
     try {
       await pinLocation(parsed.point[0], parsed.point[1])
+      props.onPinned(parsed.point)
       props.onArmedChange(false)
     } catch (err) {
       setError(errorText(err))
     } finally {
       setPinning(false)
+    }
+  }
+
+  const onSave = async () => {
+    if (!props.lastPin || placeName.trim() === "") return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await savePlace({ name: placeName.trim(), point: props.lastPin })
+      setPlaceName("")
+      props.onPlaceSaved()
+    } catch (err) {
+      setSaveError(errorText(err))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -82,6 +106,36 @@ export default function PinControl(props: PinControlProps) {
             ) : null}
             {props.disabled ? (
               <p className="text-muted-foreground text-xs">Stop the walk before setting a location.</p>
+            ) : null}
+            {props.lastPin ? (
+              <div className="mt-2 flex flex-col gap-2 border-t pt-2">
+                <p className="text-muted-foreground text-xs">
+                  Pinned at {props.lastPin[0].toFixed(5)}, {props.lastPin[1].toFixed(5)}. Name it to
+                  save it to your saved places.
+                </p>
+                <Input
+                  aria-label="Name for this place"
+                  placeholder="home"
+                  value={placeName}
+                  onChange={(event) => setPlaceName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !saving) onSave()
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={saving || placeName.trim() === ""}
+                  onClick={onSave}
+                >
+                  {saving ? <Spinner className="size-4" /> : <Save className="size-4" />} Save place
+                </Button>
+                {saveError ? (
+                  <p className="text-destructive text-xs" title={saveError}>
+                    {saveError}
+                  </p>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </PopoverContent>
