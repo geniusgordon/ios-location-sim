@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { LatLon, Preset } from "@/api/types"
 import { errorText, getPresets } from "@/api/client"
 import MapView from "@/components/MapView"
+import QuickStartBar from "@/components/QuickStartBar"
 import Sidebar, { type SidebarMode } from "@/components/Sidebar"
 import StatusBar from "@/components/StatusBar"
 import { useRoutePreview } from "@/hooks/useRoutePreview"
@@ -81,12 +82,19 @@ export default function App() {
             editDraft((w) => w.map((p, i) => (i === index ? point : p)))
           }
           onWaypointClick={(index) => editDraft((w) => w.filter((_, i) => i !== index))}
-          lengthM={preview.lengthM}
-          costing={costing}
-          onRemoveLast={() => editDraft((w) => w.slice(0, -1))}
-          onClearWaypoints={() => editDraft(() => [])}
-          onStarted={() => setSidebarOpen(false)}
-        />
+        >
+          <QuickStartBar
+            waypoints={draftWaypoints}
+            lengthM={preview.lengthM}
+            costing={costing}
+            onCostingChange={setCosting}
+            profiles={profiles}
+            offline={offline}
+            onRemoveLast={() => editDraft((w) => w.slice(0, -1))}
+            onClear={() => editDraft(() => [])}
+            onStarted={() => setSidebarOpen(false)}
+          />
+        </MapView>
       </div>
       <StatusBar onOpenSidebar={() => setSidebarOpen(true)} />
       <Sidebar
