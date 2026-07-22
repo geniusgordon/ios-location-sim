@@ -12,7 +12,7 @@ used to walk/cycle routes for Pikmin Bloom. Python 3.13, `uv`-managed, package a
 
 ```bash
 uv sync                              # install
-uv run pytest -q                     # full suite (193 tests, ~2s, no device/network needed)
+uv run pytest -q                     # full suite (205 tests, ~2s, no device/network needed)
 uv run pytest tests/test_walker.py::test_name -q   # single test
 uv run ios-loc --help
 uv run python scripts/export_openapi.py            # regenerate src/ios_loc/web/ui/api-schema.json
@@ -96,11 +96,12 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   `NameError`, `ImportError`) rather than mapping them to a retryable 503 — same
   reasoning as `session.set()`: a bug should fail loudly, not look like a transient
   hardware hiccup a client should retry.
-- **A 1 Hz fix must not re-render the map or the sidebar.** The frontend store
+- **A 1 Hz fix must not re-render the map.** The frontend store
   (`web/ui/src/state/walkStore.ts`) has three channels: telemetry (every
-  message, status bar only), meta (only when state/route/preset actually
-  change), and fix (imperative, the map's dot-mover). Reading telemetry from a
-  component above the status bar re-renders the MapLibre subtree once a second.
+  message), meta (only when state/route/preset actually change), and fix
+  (imperative, the map's dot-mover). `LiveDock` inside `Dock.tsx` is the
+  ONLY component that calls `useWalkTelemetry` — a second caller anywhere
+  above the dock re-renders that subtree once a second.
 - **`[lat, lon]` on the wire, `[lng, lat]` in MapLibre.**
   `src/ios_loc/web/ui/src/lib/coords.ts` exports `toLngLat` / `fromLngLat`, and
   those two functions are the only places in the app that flip a pair. A third
@@ -110,15 +111,21 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   not followed by `pnpm build` ships nothing. Nothing checks that the committed
   bundle matches current source — a UI change committed without `pnpm build`
   ships the *old* UI silently, and the Python suite stays green.
-- **The sidebar `Sheet` is deliberately non-modal.** `Sidebar.tsx` passes
-  `modal={false}`, `disablePointerDismissal`, and `showOverlay={false}`, and
-  clears the status bar with `data-[side=left]:bottom-14 data-[side=left]:h-auto`
-  against the `h-14` bar. A modal Sheet renders a backdrop over the map and
-  dismisses on outside-press, which swallows every map click — and the route
-  editor's whole job is clicking the map *while the sidebar is open*. That
-  failure passed every test. The `data-[side=left]:` prefix on the overrides is
-  load-bearing: an unprefixed class loses to `sheet.tsx`'s own variant-prefixed
+- **The route-library `Sheet` is deliberately non-modal.** `RouteLibrary.tsx`
+  passes `modal={false}`, `disablePointerDismissal`, and `showOverlay={false}`,
+  and clears the dock with `data-[side=left]:bottom-14 data-[side=left]:h-auto`
+  against the `h-14` dock. A modal Sheet renders a backdrop over the map and
+  dismisses on outside-press, which swallows every map click — and drawing a
+  route while the library is open is a supported flow. That failure passed
+  every test. The `data-[side=left]:` prefix on the overrides is load-bearing:
+  an unprefixed class loses to `sheet.tsx`'s own variant-prefixed
   `inset-y-0`/`h-full` under tailwind-merge.
+- **One `StartRequest` builder.** `web/ui/src/lib/startBody.ts` is the only
+  place a start body is constructed. Two inline copies (the quick bar and the
+  start form) is how the two paths silently drifted apart — a named route must
+  send `preset` with `waypoints`/`costing` null, and an edited one must send
+  the reverse. `DraftRoute.name` is cleared by every edit for the same reason:
+  starting by name after an edit runs the OLD route on the phone.
 - **Frontend tests are pure-logic only** (`vitest.config.ts` pins `environment:
   "node"`, `include: ["src/**/*.test.ts"]`). No jsdom, no component rendering —
   so the suite cannot catch a re-modalled sidebar, a re-rendering map, or any

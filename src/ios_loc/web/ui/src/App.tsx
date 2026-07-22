@@ -1,28 +1,44 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { LatLon, Preset } from "@/api/types"
-import { errorText, getPresets } from "@/api/client"
+import { errorText, getPresets, pinLocation } from "@/api/client"
+import Dock from "@/components/Dock"
 import MapView from "@/components/MapView"
-import QuickStartBar from "@/components/QuickStartBar"
-import Sidebar, { type SidebarMode } from "@/components/Sidebar"
-import StatusBar from "@/components/StatusBar"
+import RouteLibrary from "@/components/RouteLibrary"
 import { useRoutePreview } from "@/hooks/useRoutePreview"
 import { useWalkStream, useWalkMeta } from "@/hooks/useWalkStream"
+import {
+  addWaypoint,
+  clearRoute,
+  defaultSettings,
+  emptyRoute,
+  loadPreset,
+  moveWaypoint,
+  removeLast,
+  removeWaypoint,
+  type DraftRoute,
+  type DraftSettings,
+} from "@/lib/draft"
 import { isRunning } from "@/state/walkReducer"
 
 export default function App() {
   useWalkStream()
 
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [mode, setMode] = useState<SidebarMode>("presets")
-
+  const [libraryOpen, setLibraryOpen] = useState(false)
   const [presets, setPresets] = useState<Preset[]>([])
   const [profiles, setProfiles] = useState<string[]>([])
   const [offline, setOffline] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  const [selectedPreset, setSelectedPreset] = useState<string | null>(null)
-  const [draftWaypoints, setDraftWaypoints] = useState<LatLon[]>([])
+  const [route, setRoute] = useState<DraftRoute>(emptyRoute)
+  const [settings, setSettings] = useState<DraftSettings>(defaultSettings)
+  const [pinArmed, setPinArmed] = useState(false)
+  const [pinError, setPinError] = useState<string | null>(null)
+  // Keeps a finished/lost run's summary on screen after the dock would
+  // otherwise fall back to the drawing branch (the waypoints are still
+  // there). Dismissed by anything that means the user has moved on: editing
+  // the route, loading a saved one, or starting a new walk.
+  const [showSummary, setShowSummary] = useState(false)
 
   // Only the newest load may write state. Two overlapping fetches (StrictMode
   // double-invokes the mount effect in dev) would otherwise let whichever
@@ -54,81 +70,102 @@ export default function App() {
   }, [reloadPresets])
 
   const meta = useWalkMeta()
-  // Map-first: editable whenever no walk holds the device, sidebar or not.
+  // Map-first: editable whenever no walk holds the device, library open or not.
   const editing = !isRunning(meta.state)
 
-  // The moment the draft stops being the preset, it is an ad-hoc route -- keeping
-  // the name would start the OLD route on the phone while the map shows the new one.
-  const editDraft = useCallback((next: (w: LatLon[]) => LatLon[]) => {
-    setSelectedPreset(null)
-    setDraftWaypoints(next)
-  }, [])
+  // A finished run or a lost device is the most useful thing on screen until
+  // the user does something that means they've moved past it.
+  useEffect(() => {
+    if (meta.state === "finished" || meta.state === "error") setShowSummary(true)
+  }, [meta.state])
 
-  const [costing, setCosting] = useState("pedestrian")
-  // Gated on the device being free, not on the sidebar: a map-first route
-  // must draw as a line, not disconnected dots, whether or not the sidebar
-  // is open. One debounced, server-cached Valhalla call.
-  const preview = useRoutePreview(draftWaypoints, costing, !offline && !isRunning(meta.state))
+  // One debounced, server-cached Valhalla call, gated on the device being free
+  // so a map-first route draws as a line rather than disconnected dots.
+  const preview = useRoutePreview(route.waypoints, settings.costing, !offline && editing)
+
+  const onMapClick = (point: LatLon) => {
+    if (pinArmed) {
+      setPinArmed(false)
+      setPinError(null)
+      // A 409 (walk already running) never broadcasts a state message, and
+      // even a broadcast failure lands in `meta.error`, which only renders
+      // inside LiveDock -- invisible while the dock is showing the route
+      // editor. Surface the server's own text here instead.
+      void pinLocation(point[0], point[1]).catch((error: unknown) => {
+        setPinError(errorText(error))
+      })
+      return
+    }
+    setPinError(null)
+    setShowSummary(false)
+    setRoute((r) => addWaypoint(r, point))
+  }
 
   return (
     <div className="flex h-full w-full flex-col">
       <div className="min-h-0 flex-1">
         <MapView
-          draftWaypoints={draftWaypoints}
+          draftWaypoints={route.waypoints}
           draftRoute={preview.route}
           editing={editing}
-          onMapClick={(point) => editDraft((w) => [...w, point])}
-          onWaypointDrag={(index, point) =>
-            editDraft((w) => w.map((p, i) => (i === index ? point : p)))
-          }
-          onWaypointClick={(index) => editDraft((w) => w.filter((_, i) => i !== index))}
-        >
-          <QuickStartBar
-            waypoints={draftWaypoints}
-            lengthM={preview.lengthM}
-            costing={costing}
-            onCostingChange={setCosting}
-            profiles={profiles}
-            offline={offline}
-            onRemoveLast={() => editDraft((w) => w.slice(0, -1))}
-            onClear={() => editDraft(() => [])}
-            onStarted={() => setSidebarOpen(false)}
-          />
-        </MapView>
+          onMapClick={onMapClick}
+          onWaypointDrag={(index, point) => {
+            setShowSummary(false)
+            setRoute((r) => moveWaypoint(r, index, point))
+          }}
+          onWaypointClick={(index) => {
+            setShowSummary(false)
+            setRoute((r) => removeWaypoint(r, index))
+          }}
+        />
       </div>
-      <StatusBar onOpenSidebar={() => setSidebarOpen(true)} />
-      <Sidebar
-        open={sidebarOpen}
-        onOpenChange={setSidebarOpen}
-        mode={mode}
-        onModeChange={setMode}
-        presets={presets}
+      <Dock
+        route={route}
+        settings={settings}
+        onSettingsChange={setSettings}
+        lengthM={preview.lengthM}
+        routePending={preview.pending}
+        routeError={preview.error}
+        loadError={loadError}
         profiles={profiles}
         offline={offline}
+        pinArmed={pinArmed}
+        onPinArmedChange={setPinArmed}
+        pinError={pinError}
+        showSummary={showSummary}
+        onRemoveLast={() => {
+          setShowSummary(false)
+          setRoute((r) => removeLast(r))
+        }}
+        onClear={() => {
+          setShowSummary(false)
+          setRoute(clearRoute())
+        }}
+        onOpenLibrary={() => setLibraryOpen(true)}
+        onSaved={(name) => {
+          setRoute((r) => ({ ...r, name }))
+          reloadPresets()
+        }}
+        onStarted={() => {
+          setShowSummary(false)
+          setLibraryOpen(false)
+        }}
+      />
+      <RouteLibrary
+        open={libraryOpen}
+        onOpenChange={setLibraryOpen}
+        presets={presets}
+        selectedName={route.name}
         loading={loading}
         loadError={loadError}
-        onReloadPresets={reloadPresets}
-        selectedPreset={selectedPreset}
-        onSelectPreset={(preset) => {
-          setSelectedPreset(preset.name)
-          setDraftWaypoints(preset.waypoints as LatLon[])
-          setMode("start")
+        onReload={reloadPresets}
+        onSelect={(preset) => {
+          const next = loadPreset(preset, settings)
+          setShowSummary(false)
+          setRoute(next.route)
+          setSettings(next.settings)
+          setLibraryOpen(false)
         }}
-        draftWaypoints={draftWaypoints}
-        onClearWaypoints={() => editDraft(() => [])}
-        onRemoveLast={() => editDraft((w) => w.slice(0, -1))}
-        presetLoop={presets.find((p) => p.name === selectedPreset)?.loop ?? false}
-        lengthM={preview.lengthM}
-        routeError={preview.error}
-        routePending={preview.pending}
-        costing={costing}
-        onCostingChange={setCosting}
-        onPresetSaved={(name) => {
-          setSelectedPreset(name)
-          reloadPresets()
-          setMode("start")
-        }}
-        onStarted={() => setSidebarOpen(false)}
       />
     </div>
   )
