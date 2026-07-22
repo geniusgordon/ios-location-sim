@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react"
 import maplibregl from "maplibre-gl"
 import { Crosshair } from "lucide-react"
 import type { LatLon } from "@/api/types"
-import CoordBox from "@/components/CoordBox"
 import { Button } from "@/components/ui/button"
 import { fromLngLat, toLngLat } from "@/lib/coords"
 import { initialFollow, onRecenter, onUserPan, shouldCenter } from "@/lib/follow"
@@ -239,7 +238,6 @@ export default function MapView(props: MapViewProps) {
   return (
     <div className="relative h-full w-full">
       <div ref={container} className="h-full w-full" />
-      <CoordBox />
       {props.children}
       <Button
         variant="secondary"
