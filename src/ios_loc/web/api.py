@@ -23,9 +23,12 @@ from ios_loc.presets import (
     save_place,
     save_preset,
 )
+from ios_loc.discovery import find_device
 from ios_loc.routing import RoutingError
 from ios_loc.session import _PROGRAMMING_ERRORS
+from ios_loc.web.device import probe_device
 from ios_loc.web.models import (
+    DeviceStatus,
     PinRequest,
     PlaceIn,
     PlaceOut,
@@ -50,7 +53,14 @@ def create_app(
     config_path: pathlib.Path | None = None,
     offline: bool = False,
     static_dir: pathlib.Path | None = None,
+    device_probe=None,
 ) -> FastAPI:
+    if device_probe is None:
+        # No udid bound here: create_app has no udid of its own to thread
+        # through. build_gui_app (cli.py) passes a udid-bound probe when one
+        # was given on the command line.
+        async def device_probe() -> DeviceStatus:
+            return await probe_device(find_device)
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         try:
@@ -155,6 +165,17 @@ def create_app(
             length_m=path.length_m,
             is_closed_loop=path.is_closed_loop,
         )
+
+    @app.get("/api/device", response_model=DeviceStatus)
+    async def device_status() -> DeviceStatus:
+        try:
+            return await device_probe()
+        except _PROGRAMMING_ERRORS:
+            raise
+        except Exception as exc:  # noqa: BLE001 — a status check must always answer
+            return DeviceStatus(
+                connected=False, reason="error", detail=f"{type(exc).__name__}: {exc}"
+            )
 
     @app.get("/api/walk", response_model=WalkStatus)
     def walk_status() -> WalkStatus:

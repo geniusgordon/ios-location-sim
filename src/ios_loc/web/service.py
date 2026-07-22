@@ -112,6 +112,7 @@ class WalkService:
         sleep=asyncio.sleep,
         rng=None,
         stall_threshold_s: float = 2.0,
+        pin_timeout_s: float = 8.0,
     ) -> None:
         self._route_client = route_client
         self._session_factory = session_factory
@@ -122,6 +123,11 @@ class WalkService:
         self._sleep = sleep
         self._rng = rng if rng is not None else random.Random()
         self._stall_threshold_s = stall_threshold_s
+        # `pin()` has no run duration to derive a deadline from, unlike a walk
+        # (whose deadline comes from `run_walk`'s own tick loop) -- without
+        # one, session.set()'s max_attempts=0 retries forever and the HTTP
+        # request never returns its 503.
+        self._pin_timeout_s = pin_timeout_s
 
         self._run: _Run | None = None
         self._state = WalkState.IDLE
@@ -236,7 +242,9 @@ class WalkService:
                     session = self._session_factory()
                     await session.start()
                     self._pin_session = session
-                await self._pin_session.set(lat, lon)
+                await self._pin_session.set(
+                    lat, lon, deadline=self._clock() + self._pin_timeout_s
+                )
             except BaseException as exc:
                 # A half-open session must not leak. Clear the device, drop the
                 # session, record the failure, and let the original exception

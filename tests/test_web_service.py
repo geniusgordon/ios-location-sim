@@ -528,6 +528,33 @@ async def test_pin_while_walking_is_refused():
     await service.stop()
 
 
+async def test_pin_passes_a_bounded_deadline_to_set():
+    # Without a deadline, session.set()'s max_attempts=0 retries forever and
+    # the HTTP request would never return -- pin() must bound it the same
+    # way run_walk bounds a walk's set() calls.
+    session = FakeSession()
+    service, _ = make_service(session=session, pin_timeout_s=8.0)
+    await service.pin(48.858666, 2.293991)
+    assert session.set_deadlines == [8.0]  # VirtualClock starts at 0.0
+
+
+async def test_pin_fails_fast_when_set_reports_session_lost():
+    class LostSession(FakeSession):
+        async def set(self, lat, lon, deadline=None):
+            await super().set(lat, lon, deadline=deadline)
+            raise SessionLost("device unreachable at deadline")
+
+    session = LostSession()
+    service, _ = make_service(session=session)
+    with pytest.raises(SessionLost):
+        await service.pin(48.858666, 2.293991)
+    assert service.status().state is WalkState.IDLE
+    assert service.status().error is not None
+    assert "SessionLost" in service.status().error
+    # The half-open session must not linger as the held pin.
+    assert service._pin_session is None
+
+
 async def test_pin_tears_down_the_session_on_device_failure():
     session = FakeSession(fail_with=RuntimeError("device unreachable"), fail_on=1)
     service, _ = make_service(session=session)

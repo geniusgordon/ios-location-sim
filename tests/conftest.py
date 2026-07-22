@@ -35,6 +35,7 @@ class FakeSession:
 
     def __init__(self, fail_with=None, fail_on=None, start_gate=None, stop_gate=None):
         self.sets = []
+        self.set_deadlines = []
         self.reconnects = 0
         self.started = False
         self.stopped = False
@@ -73,6 +74,7 @@ class FakeSession:
 
     async def set(self, lat, lon, deadline=None):
         self.sets.append((lat, lon))
+        self.set_deadlines.append(deadline)
         if self._fail_with is not None and len(self.sets) == self._fail_on:
             raise self._fail_with
 

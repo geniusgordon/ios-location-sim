@@ -322,6 +322,7 @@ def build_gui_app(
 ):
     """Assemble the GUI app. Separated from `gui` so tests need no server."""
     from ios_loc.web.api import create_app
+    from ios_loc.web.device import probe_device
     from ios_loc.web.service import WalkService
 
     route_client = ValhallaClient(offline=offline)
@@ -329,12 +330,17 @@ def build_gui_app(
         route_client=route_client,
         session_factory=lambda: LocationSession(lambda: open_simulation(udid)),
     )
+
+    async def device_probe():
+        return await probe_device(find_device, udid=udid)
+
     return create_app(
         service=service,
         route_client=route_client,
         config_path=config,
         offline=offline,
         static_dir=static_dir,
+        device_probe=device_probe,
     )
 
 

@@ -142,6 +142,12 @@ class PinRequest(BaseModel):
     lon: float = Field(ge=-180, le=180)
 
 
+class DeviceStatus(BaseModel):
+    connected: bool
+    reason: str  # "ok" | "no_device" | "tunneld_down" | "error"
+    detail: str
+
+
 class WalkStatus(BaseModel):
     state: WalkState
     error: str | None = None

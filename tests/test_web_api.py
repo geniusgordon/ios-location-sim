@@ -9,11 +9,12 @@ from starlette.websockets import WebSocket as StarletteWebSocket
 from ios_loc.presets import Preset, load_config, load_places, save_preset
 from ios_loc.routing import RoutingError
 from ios_loc.web.api import create_app
+from ios_loc.web.models import DeviceStatus
 from ios_loc.web.service import WalkService
 from tests.conftest import SQUARE, FakeRouteClient, FakeSession, VirtualClock
 
 
-def _make_app(tmp_path, session=None, static_dir=None):
+def _make_app(tmp_path, session=None, static_dir=None, device_probe=None):
     route_client = FakeRouteClient()
     clock = VirtualClock()
     service = WalkService(
@@ -27,6 +28,7 @@ def _make_app(tmp_path, session=None, static_dir=None):
         route_client=route_client,
         config_path=tmp_path / "config.toml",
         static_dir=static_dir,
+        device_probe=device_probe,
     )
     return app
 
@@ -536,6 +538,85 @@ def test_the_committed_bundle_is_a_real_build(tmp_path):
     assert client.get("/api/walk").json()["state"] == "idle"
 
 
+def _probe_returning(status: DeviceStatus):
+    async def _probe():
+        return status
+
+    return _probe
+
+
+def test_device_status_reports_ok(tmp_path):
+    app = _make_app(
+        tmp_path,
+        device_probe=_probe_returning(
+            DeviceStatus(connected=True, reason="ok", detail="iOS 17.5")
+        ),
+    )
+    with TestClient(app) as client:
+        resp = client.get("/api/device")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body == {"connected": True, "reason": "ok", "detail": "iOS 17.5"}
+
+
+def test_device_status_reports_tunneld_down(tmp_path):
+    app = _make_app(
+        tmp_path,
+        device_probe=_probe_returning(
+            DeviceStatus(connected=False, reason="tunneld_down", detail="not running")
+        ),
+    )
+    with TestClient(app) as client:
+        resp = client.get("/api/device")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["connected"] is False
+        assert body["reason"] == "tunneld_down"
+
+
+def test_device_status_reports_no_device(tmp_path):
+    app = _make_app(
+        tmp_path,
+        device_probe=_probe_returning(
+            DeviceStatus(connected=False, reason="no_device", detail="no tunnels")
+        ),
+    )
+    with TestClient(app) as client:
+        resp = client.get("/api/device")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["connected"] is False
+        assert body["reason"] == "no_device"
+
+
+def test_device_status_reports_error(tmp_path):
+    app = _make_app(
+        tmp_path,
+        device_probe=_probe_returning(
+            DeviceStatus(connected=False, reason="error", detail="RuntimeError: boom")
+        ),
+    )
+    with TestClient(app) as client:
+        resp = client.get("/api/device")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["connected"] is False
+        assert body["reason"] == "error"
+
+
+def test_device_status_probe_exception_is_a_200_error_status(tmp_path):
+    async def boom():
+        raise RuntimeError("device_probe itself blew up")
+
+    app = _make_app(tmp_path, device_probe=boom)
+    with TestClient(app) as client:
+        resp = client.get("/api/device")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["connected"] is False
+        assert body["reason"] == "error"
+
+
 def test_pin_sets_the_device_and_reports_pinned(tmp_path):
     session = FakeSession()
     app = _make_app(tmp_path, session=session)
@@ -568,6 +649,21 @@ def test_pin_while_walking_is_409(tmp_path):
         resp = client.post("/api/pin", json={"lat": 48.858666, "lon": 2.293991})
         assert resp.status_code == 409
         client.delete("/api/walk")
+
+
+def test_pin_session_lost_is_503_and_does_not_hang(tmp_path):
+    from ios_loc.session import SessionLost
+
+    class LostSession(FakeSession):
+        async def set(self, lat, lon, deadline=None):
+            await super().set(lat, lon, deadline=deadline)
+            raise SessionLost("device unreachable at deadline")
+
+    session = LostSession()
+    app = _make_app(tmp_path, session=session)
+    with TestClient(app) as client:
+        resp = client.post("/api/pin", json={"lat": 48.858666, "lon": 2.293991})
+        assert resp.status_code == 503
 
 
 def test_pin_device_failure_is_503(tmp_path):
