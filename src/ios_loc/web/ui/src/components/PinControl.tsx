@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Keyboard, MapPin, Save, X } from "lucide-react"
+import { ChevronDown, MapPin, Save, X } from "lucide-react"
 import type { LatLon } from "@/api/types"
 import { errorText, pinLocation, savePlace } from "@/api/client"
 import { Button } from "@/components/ui/button"
@@ -102,26 +102,36 @@ export default function PinControl(props: PinControlProps) {
           </Button>
         </span>
       ) : null}
-      {/* A toggle, not a button: while armed, the next (and every subsequent)
-          map tap sets the location instead of drawing a waypoint. */}
-      <Button
-        variant={props.armed ? "secondary" : "ghost"}
-        size="sm"
-        aria-label="Set a location by tapping the map"
-        aria-pressed={props.armed}
-        disabled={props.disabled}
-        onClick={() => props.onArmedChange(!props.armed)}
-      >
-        <MapPin className="size-4" /> Set location
-      </Button>
+      {/* One fused control: the label toggles map-tap arming (while armed, the
+          next and every subsequent map tap sets the location instead of drawing
+          a waypoint); the caret opens coordinate entry and the save form. */}
       <Popover>
-        <PopoverTrigger
-          render={
-            <Button variant="ghost" size="sm" aria-label="Set location by coordinates" disabled={props.disabled}>
-              <Keyboard className="size-4" />
-            </Button>
-          }
-        />
+        <div className="flex items-center">
+          <Button
+            variant={props.armed ? "secondary" : "ghost"}
+            size="sm"
+            className="rounded-r-none"
+            aria-label="Set a location by tapping the map"
+            aria-pressed={props.armed}
+            disabled={props.disabled}
+            onClick={() => props.onArmedChange(!props.armed)}
+          >
+            <MapPin className="size-4" /> Set location
+          </Button>
+          <PopoverTrigger
+            render={
+              <Button
+                variant={props.armed ? "secondary" : "ghost"}
+                size="sm"
+                className="border-border/50 rounded-l-none border-l px-2"
+                aria-label="Set location by coordinates"
+                disabled={props.disabled}
+              >
+                <ChevronDown className="size-4" />
+              </Button>
+            }
+          />
+        </div>
         <PopoverContent align="end" side="top" className="w-80">
           <div className="flex flex-col gap-2">
             <Input
@@ -145,35 +155,38 @@ export default function PinControl(props: PinControlProps) {
             {props.disabled ? (
               <p className="text-muted-foreground text-xs">Stop the walk before setting a location.</p>
             ) : null}
-            {shownValid ? (
-              <div className="mt-2 flex flex-col gap-2 border-t pt-2">
-                <p className="text-muted-foreground text-xs">
-                  Name this coordinate to save it to your saved places.
+            {/* Always shown so saving is discoverable from the first open --
+                disabled until the shown coordinate is a valid lat,lon. */}
+            <div className="mt-2 flex flex-col gap-2 border-t pt-2">
+              <p className="text-muted-foreground text-xs">
+                {shownValid
+                  ? "Name this coordinate to save it to your saved places."
+                  : "Set or type a valid coordinate above, then name it to save it here."}
+              </p>
+              <Input
+                aria-label="Name for this place"
+                placeholder="home"
+                value={placeName}
+                onChange={(event) => setPlaceName(event.target.value)}
+                disabled={props.disabled || !shownValid}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !saving && shownValid) onSave()
+                }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={saving || !shownValid || placeName.trim() === ""}
+                onClick={onSave}
+              >
+                {saving ? <Spinner className="size-4" /> : <Save className="size-4" />} Save place
+              </Button>
+              {saveError ? (
+                <p className="text-destructive text-xs" title={saveError}>
+                  {saveError}
                 </p>
-                <Input
-                  aria-label="Name for this place"
-                  placeholder="home"
-                  value={placeName}
-                  onChange={(event) => setPlaceName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !saving) onSave()
-                  }}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={saving || placeName.trim() === ""}
-                  onClick={onSave}
-                >
-                  {saving ? <Spinner className="size-4" /> : <Save className="size-4" />} Save place
-                </Button>
-                {saveError ? (
-                  <p className="text-destructive text-xs" title={saveError}>
-                    {saveError}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
         </PopoverContent>
       </Popover>
