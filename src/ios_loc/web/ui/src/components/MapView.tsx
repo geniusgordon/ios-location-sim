@@ -54,6 +54,10 @@ export interface MapViewProps {
   onMapClick(point: LatLon): void
   onWaypointDrag(index: number, point: LatLon): void
   onWaypointClick(index: number): void
+  /** Ease the camera to this point when the nonce changes. Driven by typed-
+   *  coordinate and saved-place sets; a map-tap set leaves it unchanged (the
+   *  tapped point is already on screen). */
+  centerOn: { point: LatLon; nonce: number } | null
 }
 
 export default function MapView(props: MapViewProps) {
@@ -216,6 +220,16 @@ export default function MapView(props: MapViewProps) {
     source?.setData(lineOf(meta.route))
     if (meta.route.length >= 2) fitTo(map.current, meta.route)
   }, [ready, meta.route])
+
+  // --- explicit recenter on a set location ----------------------------------
+  useEffect(() => {
+    if (!ready) return
+    const point = props.centerOn?.point
+    if (!point) return
+    map.current?.easeTo({ center: toLngLat(point), duration: 400 })
+    // Keyed on the nonce so repeated sets to the same/nearby point still fire.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, props.centerOn?.nonce])
 
   // --- draft route + waypoints (from the editor) ----------------------------
   useEffect(() => {

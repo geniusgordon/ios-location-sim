@@ -20,6 +20,7 @@ export interface RouteLibraryProps {
   places: Place[]
   selectedName: string | null
   loading: boolean
+  placesLoading: boolean
   loadError: string | null
   onReload(): void
   onSelect(preset: Preset): void
@@ -151,16 +152,16 @@ export default function RouteLibrary(props: RouteLibraryProps) {
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {props.loading ? (
-            <div className="flex items-center gap-2 p-4 text-sm">
-              <Spinner className="size-4" /> Loading routes…
-            </div>
-          ) : props.loadError ? null : (
+          {props.loadError ? null : (
             <>
               <h3 className="text-muted-foreground px-4 pt-4 pb-1 text-xs font-medium tracking-wide uppercase">
                 Routes
               </h3>
-              {props.presets.length === 0 ? (
+              {props.loading ? (
+                <div className="flex items-center gap-2 px-4 pb-3 text-sm">
+                  <Spinner className="size-4" /> Loading routes…
+                </div>
+              ) : props.presets.length === 0 ? (
                 <p className="text-muted-foreground px-4 pb-3 text-sm">
                   No saved routes yet. Draw one on the map and save it from Options — it lands in
                   <code className="mx-1">~/.config/ios-loc/config.toml</code>, so
@@ -187,10 +188,14 @@ export default function RouteLibrary(props: RouteLibraryProps) {
               <h3 className="text-muted-foreground px-4 pt-4 pb-1 text-xs font-medium tracking-wide uppercase">
                 Places
               </h3>
-              {props.places.length === 0 ? (
+              {props.placesLoading ? (
+                <div className="flex items-center gap-2 px-4 pb-3 text-sm">
+                  <Spinner className="size-4" /> Loading places…
+                </div>
+              ) : props.places.length === 0 ? (
                 <p className="text-muted-foreground px-4 pb-3 text-sm">
-                  No saved places yet. Set a location with the Pin button, then name it to save it
-                  here.
+                  No saved places yet. Set a location with the Set location button, then name it to
+                  save it here.
                 </p>
               ) : (
                 <ul className="divide-border divide-y border-b">

@@ -10,7 +10,7 @@ import RouteOptions from "@/components/RouteOptions"
 import { formatDistance, formatDuration, formatSpeed } from "@/lib/format"
 import type { DraftRoute, DraftSettings } from "@/lib/draft"
 import { canStart, startBody } from "@/lib/startBody"
-import { canStop, isRunning } from "@/state/walkReducer"
+import { canStop, isRunning, showsLiveDock } from "@/state/walkReducer"
 import { useWalkMeta, useWalkTelemetry } from "@/hooks/useWalkStream"
 
 const LABEL: Record<WalkStateName, string> = {
@@ -59,14 +59,7 @@ function Stat(props: { label: string; value: string; truncate?: boolean }) {
  * and nothing else -- pulling `useWalkTelemetry` up into `Dock` would re-render
  * the map's siblings once a second.
  */
-function LiveDock(props: {
-  pinArmed: boolean
-  onPinArmedChange(armed: boolean): void
-  /** The last pinned point, or null. Gates the save-place form. */
-  lastPin: LatLon | null
-  onPinned(point: LatLon): void
-  onPlaceSaved(): void
-}) {
+function LiveDock() {
   const { fix, stats, state } = useWalkTelemetry()
   const meta = useWalkMeta()
   const [stopping, setStopping] = useState(false)
@@ -102,16 +95,6 @@ function LiveDock(props: {
           </span>
         ) : null}
         {stopError ? <span className="text-destructive text-xs">{stopError}</span> : null}
-        {state === "pinned" ? (
-          <PinControl
-            armed={props.pinArmed}
-            onArmedChange={props.onPinArmedChange}
-            disabled={isRunning(state)}
-            lastPin={props.lastPin}
-            onPinned={props.onPinned}
-            onPlaceSaved={props.onPlaceSaved}
-          />
-        ) : null}
         <Button
           variant="destructive"
           size="sm"
@@ -143,8 +126,12 @@ export interface DockProps {
   onPinArmedChange(armed: boolean): void
   /** The last pinned point, or null. Gates the save-place form. */
   lastPin: LatLon | null
-  onPinned(point: LatLon): void
+  onPinned(point: LatLon, opts?: { recenter?: boolean }): void
   onPlaceSaved(): void
+  /** True while a location is currently held (meta.state === "pinned"). */
+  held: boolean
+  /** Releases the held location (DELETE /api/walk). */
+  onClearPin(): Promise<void>
   /** A failed set-location pin (map-tap while armed). LiveDock never mounts
    *  for this failure -- pin errors leave the dock in one of the other two
    *  branches -- so it is rendered here instead of via `meta.error`. */
@@ -170,7 +157,10 @@ export default function Dock(props: DockProps) {
   // explicit user-visible flag App.tsx sets on `finished`/`error` and clears
   // on the next route edit, load, or walk start, so a completed run does not
   // vanish the instant the dock re-evaluates against an unchanged route.
-  const live = canStop(meta.state) || props.showSummary
+  // A walk (or a finished/lost run's still-pinned summary) shows the live dock.
+  // A bare pinned location does NOT -- it stays editable in the dock below so
+  // the next location can be set without stopping first.
+  const live = showsLiveDock(meta.state, props.showSummary)
 
   const onStart = async () => {
     setStarting(true)
@@ -188,13 +178,7 @@ export default function Dock(props: DockProps) {
   return (
     <div className="bg-background/95 flex h-14 items-center gap-4 border-t px-4 py-2 backdrop-blur">
       {live ? (
-        <LiveDock
-          pinArmed={props.pinArmed}
-          onPinArmedChange={props.onPinArmedChange}
-          lastPin={props.lastPin}
-          onPinned={props.onPinned}
-          onPlaceSaved={props.onPlaceSaved}
-        />
+        <LiveDock />
       ) : props.route.waypoints.length === 0 ? (
         <>
           <Button variant="ghost" size="icon" aria-label="Saved routes" onClick={props.onOpenLibrary}>
@@ -221,6 +205,8 @@ export default function Dock(props: DockProps) {
               lastPin={props.lastPin}
               onPinned={props.onPinned}
               onPlaceSaved={props.onPlaceSaved}
+              held={props.held}
+              onClear={props.onClearPin}
             />
           </div>
         </>
@@ -268,6 +254,16 @@ export default function Dock(props: DockProps) {
                 {props.pinError}
               </span>
             ) : null}
+            <PinControl
+              armed={props.pinArmed}
+              onArmedChange={props.onPinArmedChange}
+              disabled={isRunning(meta.state)}
+              lastPin={props.lastPin}
+              onPinned={props.onPinned}
+              onPlaceSaved={props.onPlaceSaved}
+              held={props.held}
+              onClear={props.onClearPin}
+            />
             <RouteOptions
               route={props.route}
               settings={props.settings}

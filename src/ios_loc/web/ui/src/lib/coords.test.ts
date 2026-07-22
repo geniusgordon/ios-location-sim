@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { parseLatLon } from "./coords"
+import { formatLatLon, parseLatLon } from "./coords"
 
 describe("parseLatLon", () => {
   it("parses a plain comma-separated pair", () => {
@@ -36,5 +36,15 @@ describe("parseLatLon", () => {
 
   it("rejects the empty string", () => {
     expect("error" in parseLatLon("")).toBe(true)
+  })
+})
+
+describe("formatLatLon", () => {
+  it("formats a point to 5 decimals, comma-space separated", () => {
+    expect(formatLatLon([48.858666, 2.293991])).toBe("48.85867, 2.29399")
+  })
+  it("round-trips through parseLatLon", () => {
+    const parsed = parseLatLon(formatLatLon([25.033, 121.5654]))
+    expect("point" in parsed && parsed.point).toEqual([25.033, 121.5654])
   })
 })

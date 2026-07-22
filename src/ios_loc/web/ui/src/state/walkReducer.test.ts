@@ -8,6 +8,7 @@ import {
   isRunning,
   metaEquals,
   metaOf,
+  showsLiveDock,
 } from "./walkReducer"
 
 function fix(n: number): Fix {
@@ -43,6 +44,11 @@ describe("fromStatus", () => {
     const long = { ...status, trail: Array.from({ length: 500 }, (_, i) => fix(i)) }
     expect(fromStatus(long).trail).toHaveLength(TRAIL_LIMIT)
     expect(fromStatus(long).trail[TRAIL_LIMIT - 1].elapsed_s).toBe(499)
+  })
+
+  it("drops the trail for a pinned snapshot (no orange line on reconnect)", () => {
+    const pinned = { ...status, state: "pinned" as const }
+    expect(fromStatus(pinned).trail).toEqual([])
   })
 })
 
@@ -94,6 +100,39 @@ describe("applyMessage: fix", () => {
     const after = applyMessage(before, { type: "fix", fix: fix(4), stats, state: "reconnecting" })
     expect(after.state).toBe("reconnecting")
     expect(metaEquals(metaOf(before), metaOf(after))).toBe(false)
+  })
+})
+
+describe("applyMessage: fix (pinned)", () => {
+  it("does not append a pinned fix to the trail", () => {
+    // A set location is a single point, not a walked path: no orange trail line.
+    const model = applyMessage(fromStatus(status), { type: "fix", fix: fix(4), stats, state: "pinned" })
+    expect(model.trail).toEqual([])
+    expect(model.fix?.elapsed_s).toBe(4)
+    expect(model.state).toBe("pinned")
+  })
+
+  it("still appends a walking fix to the trail", () => {
+    const model = applyMessage(fromStatus(status), { type: "fix", fix: fix(4), stats, state: "walking" })
+    expect(model.trail).toHaveLength(4)
+  })
+})
+
+describe("showsLiveDock", () => {
+  it("is false for a bare pinned location (edited in place, no dock takeover)", () => {
+    expect(showsLiveDock("pinned", false)).toBe(false)
+  })
+  it("is true while a walk holds the device", () => {
+    expect(showsLiveDock("walking", false)).toBe(true)
+    expect(showsLiveDock("starting", false)).toBe(true)
+    expect(showsLiveDock("reconnecting", false)).toBe(true)
+  })
+  it("is true while a finished/lost run's summary is pinned on screen", () => {
+    expect(showsLiveDock("finished", true)).toBe(true)
+    expect(showsLiveDock("idle", true)).toBe(true)
+  })
+  it("is false when idle with no summary", () => {
+    expect(showsLiveDock("idle", false)).toBe(false)
   })
 })
 

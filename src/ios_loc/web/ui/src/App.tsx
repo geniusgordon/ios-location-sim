@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { LatLon, Place, Preset } from "@/api/types"
-import { deletePlace, deletePreset, errorText, getPlaces, getPresets, pinLocation } from "@/api/client"
+import { deletePlace, deletePreset, errorText, getPlaces, getPresets, pinLocation, stopWalk } from "@/api/client"
 import Dock from "@/components/Dock"
 import MapView from "@/components/MapView"
 import RouteLibrary from "@/components/RouteLibrary"
@@ -38,6 +38,32 @@ export default function App() {
   const [settings, setSettings] = useState<DraftSettings>(defaultSettings)
   const [pinArmed, setPinArmed] = useState(false)
   const [pinError, setPinError] = useState<string | null>(null)
+  const [placesLoading, setPlacesLoading] = useState(true)
+  // Bumped on every typed/place set so MapView eases to the new point. A ref,
+  // not state: only its value-at-set-time matters, paired into `centerOn`.
+  const centerNonce = useRef(0)
+  const [centerOn, setCenterOn] = useState<{ point: LatLon; nonce: number } | null>(null)
+
+  const recenterTo = useCallback((point: LatLon) => {
+    centerNonce.current += 1
+    setCenterOn({ point, nonce: centerNonce.current })
+  }, [])
+
+  // The set-location paths funnel through here. `recenter` is set for typed and
+  // saved-place sets (which may be off-screen) and omitted for a map tap.
+  const handlePinned = useCallback(
+    (point: LatLon, opts?: { recenter?: boolean }) => {
+      setLastPin(point)
+      if (opts?.recenter) recenterTo(point)
+    },
+    [recenterTo],
+  )
+
+  const handleClear = useCallback(async () => {
+    await stopWalk()
+    setLastPin(null)
+    setPinArmed(false)
+  }, [])
   // Keeps a finished/lost run's summary on screen after the dock would
   // otherwise fall back to the drawing branch (the waypoints are still
   // there). Dismissed by anything that means the user has moved on: editing
@@ -74,17 +100,25 @@ export default function App() {
   }, [reloadPresets])
 
   const reloadPlaces = useCallback(() => {
+    setPlacesLoading(true)
     getPlaces()
       .then((data) => setPlaces(data.places))
       .catch(() => {
         // A places failure is not worth blanking the sheet: /api/presets
         // already surfaces a broken config, and this call reads the same file.
       })
+      .finally(() => setPlacesLoading(false))
   }, [])
 
   useEffect(() => {
     reloadPlaces()
   }, [reloadPlaces])
+
+  // Re-read places whenever the library opens so a save from a prior open is
+  // reflected -- and so an early first open cannot show a stale empty list.
+  useEffect(() => {
+    if (libraryOpen) reloadPlaces()
+  }, [libraryOpen, reloadPlaces])
 
   const meta = useWalkMeta()
   // Map-first: editable whenever no walk holds the device, library open or not.
@@ -102,14 +136,11 @@ export default function App() {
 
   const onMapClick = (point: LatLon) => {
     if (pinArmed) {
-      setPinArmed(false)
+      // Stay armed: setting several locations in a row is the whole point.
       setPinError(null)
-      // A 409 (walk already running) never broadcasts a state message, and
-      // even a broadcast failure lands in `meta.error`, which only renders
-      // inside LiveDock -- invisible while the dock is showing the route
-      // editor. Surface the server's own text here instead.
+      setShowSummary(false)
       void pinLocation(point[0], point[1])
-        .then(() => setLastPin(point))
+        .then(() => handlePinned(point))
         .catch((error: unknown) => {
           setPinError(errorText(error))
         })
@@ -127,6 +158,7 @@ export default function App() {
           draftWaypoints={route.waypoints}
           draftRoute={preview.route}
           editing={editing}
+          centerOn={centerOn}
           onMapClick={onMapClick}
           onWaypointDrag={(index, point) => {
             setShowSummary(false)
@@ -152,7 +184,9 @@ export default function App() {
         onPinArmedChange={setPinArmed}
         pinError={pinError}
         lastPin={lastPin}
-        onPinned={setLastPin}
+        held={meta.state === "pinned"}
+        onPinned={handlePinned}
+        onClearPin={handleClear}
         onPlaceSaved={reloadPlaces}
         showSummary={showSummary}
         onRemoveLast={() => {
@@ -178,6 +212,7 @@ export default function App() {
         onOpenChange={setLibraryOpen}
         presets={presets}
         places={places}
+        placesLoading={placesLoading}
         selectedName={route.name}
         loading={loading}
         loadError={loadError}
@@ -195,7 +230,7 @@ export default function App() {
           setPinError(null)
           setLibraryOpen(false)
           void pinLocation(point[0], point[1])
-            .then(() => setLastPin(point))
+            .then(() => handlePinned(point, { recenter: true }))
             .catch((error: unknown) => {
               setPinError(errorText(error))
             })
