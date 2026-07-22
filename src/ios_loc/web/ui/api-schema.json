@@ -52,6 +52,29 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "PinRequest": {
+        "description": "A single point to hold the device at \u2014 the GUI's `ios-loc set`.",
+        "properties": {
+          "lat": {
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat",
+            "type": "number"
+          },
+          "lon": {
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lon",
+            "type": "number"
+          }
+        },
+        "required": [
+          "lat",
+          "lon"
+        ],
+        "title": "PinRequest",
+        "type": "object"
+      },
       "PresetIn": {
         "properties": {
           "loop": {
@@ -404,7 +427,8 @@
           "walking",
           "reconnecting",
           "finished",
-          "error"
+          "error",
+          "pinned"
         ],
         "title": "WalkState",
         "type": "string"
@@ -515,6 +539,44 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/pin": {
+      "post": {
+        "operationId": "set_pin_api_pin_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalkStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Pin"
+      }
+    },
     "/api/presets": {
       "get": {
         "operationId": "list_presets_api_presets_get",

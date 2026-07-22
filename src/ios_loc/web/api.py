@@ -15,6 +15,7 @@ from ios_loc.presets import ConfigError, Preset, load_config, resolve_walk, save
 from ios_loc.routing import RoutingError
 from ios_loc.session import _PROGRAMMING_ERRORS
 from ios_loc.web.models import (
+    PinRequest,
     PresetIn,
     PresetOut,
     PresetsListOut,
@@ -144,6 +145,20 @@ def create_app(
             # telling the client (wrongly) that retrying is reasonable.
             raise
         except Exception as exc:  # device or tunnel failure at start
+            raise HTTPException(status_code=503, detail=f"{type(exc).__name__}: {exc}") from exc
+
+    @app.post("/api/pin", response_model=WalkStatus)
+    async def set_pin(body: PinRequest) -> WalkStatus:
+        try:
+            return await service.pin(body.lat, body.lon)
+        except WalkAlreadyRunning as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except _PROGRAMMING_ERRORS:
+            # A bug, not a device dropout -- let it 500 rather than tell the
+            # client (wrongly) that retrying is reasonable. Same rule as
+            # start_walk and session.set().
+            raise
+        except Exception as exc:  # device or tunnel failure at pin time
             raise HTTPException(status_code=503, detail=f"{type(exc).__name__}: {exc}") from exc
 
     @app.delete("/api/walk", response_model=WalkStatus)

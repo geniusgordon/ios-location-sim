@@ -534,3 +534,53 @@ def test_the_committed_bundle_is_a_real_build(tmp_path):
     client = TestClient(_make_app(tmp_path, static_dir=static))
     assert client.get("/").headers["content-type"].startswith("text/html")
     assert client.get("/api/walk").json()["state"] == "idle"
+
+
+def test_pin_sets_the_device_and_reports_pinned(tmp_path):
+    session = FakeSession()
+    app = _make_app(tmp_path, session=session)
+    with TestClient(app) as client:
+        resp = client.post("/api/pin", json={"lat": 48.858666, "lon": 2.293991})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["state"] == "pinned"
+        assert body["fix"]["lat"] == 48.858666
+        assert body["fix"]["lon"] == 2.293991
+    # Leaving the TestClient context runs lifespan shutdown -> service.stop(),
+    # which clears the pinned device.
+    assert session.cleared is True
+
+
+def test_pin_rejects_out_of_range_coordinates(tmp_path):
+    app = _make_app(tmp_path)
+    with TestClient(app) as client:
+        resp = client.post("/api/pin", json={"lat": 200.0, "lon": 2.0})
+        assert resp.status_code == 422
+
+
+def test_pin_while_walking_is_409(tmp_path):
+    # A never-completing set() keeps the walk alive across the pin attempt.
+    session = FakeSession()
+    app = _make_app(tmp_path, session=session)
+    with TestClient(app) as client:
+        started = client.post("/api/walk", json={"waypoints": SQUARE, "duration_s": 3600})
+        assert started.status_code == 200
+        resp = client.post("/api/pin", json={"lat": 48.858666, "lon": 2.293991})
+        assert resp.status_code == 409
+        client.delete("/api/walk")
+
+
+def test_pin_device_failure_is_503(tmp_path):
+    session = FakeSession(fail_with=RuntimeError("tunnel gone"), fail_on=1)
+    app = _make_app(tmp_path, session=session)
+    with TestClient(app) as client:
+        resp = client.post("/api/pin", json={"lat": 48.858666, "lon": 2.293991})
+        assert resp.status_code == 503
+
+
+def test_pin_programming_error_is_500_not_503(tmp_path):
+    session = FakeSession(fail_with=TypeError("bug in set"), fail_on=1)
+    app = _make_app(tmp_path, session=session)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        resp = client.post("/api/pin", json={"lat": 48.858666, "lon": 2.293991})
+        assert resp.status_code == 500
