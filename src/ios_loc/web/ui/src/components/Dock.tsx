@@ -131,7 +131,7 @@ export interface DockProps {
   /** True while a location is currently held (meta.state === "pinned"). */
   held: boolean
   /** Releases the held location (DELETE /api/walk). */
-  onClear(): Promise<void>
+  onClearPin(): Promise<void>
   /** A failed set-location pin (map-tap while armed). LiveDock never mounts
    *  for this failure -- pin errors leave the dock in one of the other two
    *  branches -- so it is rendered here instead of via `meta.error`. */
@@ -206,7 +206,7 @@ export default function Dock(props: DockProps) {
               onPinned={props.onPinned}
               onPlaceSaved={props.onPlaceSaved}
               held={props.held}
-              onClear={props.onClear}
+              onClear={props.onClearPin}
             />
           </div>
         </>
@@ -262,7 +262,7 @@ export default function Dock(props: DockProps) {
               onPinned={props.onPinned}
               onPlaceSaved={props.onPlaceSaved}
               held={props.held}
-              onClear={props.onClear}
+              onClear={props.onClearPin}
             />
             <RouteOptions
               route={props.route}
