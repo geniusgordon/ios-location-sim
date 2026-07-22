@@ -16,6 +16,7 @@ const LABEL: Record<WalkStateName, string> = {
   reconnecting: "reconnecting",
   finished: "finished",
   error: "device lost",
+  pinned: "pinned",
 }
 
 // `destructive` for error, `secondary` for the quiet states, default for live.

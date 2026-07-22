@@ -1,4 +1,5 @@
 import type {
+  PinRequest,
   PresetIn,
   Preset,
   PresetsList,
@@ -105,4 +106,13 @@ export function startWalk(body: StartRequest, signal?: AbortSignal): Promise<Wal
 
 export function stopWalk(signal?: AbortSignal): Promise<WalkStatus> {
   return request<WalkStatus>("/api/walk", { method: "DELETE", signal })
+}
+
+export function pinLocation(
+  lat: number,
+  lon: number,
+  signal?: AbortSignal,
+): Promise<WalkStatus> {
+  const body: PinRequest = { lat, lon }
+  return request<WalkStatus>("/api/pin", json("POST", body, signal))
 }
