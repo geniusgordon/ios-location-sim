@@ -104,6 +104,13 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   hemisphere, with no error.
 - **`web/static/` is committed build output.** A change under `web/ui/` that is
   not followed by `pnpm build` ships nothing.
+- **A set-location pin is a walk-parity device state.** `WalkService.pin()`
+  holds one open session under the same lock as `start()`/`stop()`, so the
+  device never gets two owners. Pinning while a walk runs is refused (409);
+  starting a walk while pinned silently replaces the pin (a pin holds no
+  accumulated state). `stop()` clears a pin exactly as it ends a walk — one
+  Stop button for both. The pin reaches the browser as a `"fix"` broadcast so
+  the map's live dot moves; it produces no per-second traffic.
 
 ## Config
 
