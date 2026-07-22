@@ -2,7 +2,7 @@ import pathlib
 
 import pytest
 
-from ios_loc.presets import ConfigError, Preset, load_config, save_preset
+from ios_loc.presets import ConfigError, Preset, delete_preset, load_config, save_preset
 
 CONFIG_WITH_COMMENTS = """\
 # my hand-written config — this comment must survive
@@ -227,3 +227,39 @@ def test_save_preset_cannot_repair_existing_invalid_config_with_unknown_profile_
 
     # Verify the file is left byte-identical
     assert path.read_bytes() == broken_bytes
+
+
+def test_deleting_a_preset_leaves_profiles_and_comments_intact(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(CONFIG_WITH_COMMENTS)
+    save_preset(path, Preset(name="keep", waypoints=[(1.0, 2.0), (3.0, 4.0)], profile="jog"))
+
+    delete_preset(path, "old")
+
+    profiles, presets = load_config(path)
+    assert set(presets) == {"keep"}
+    assert profiles["jog"].speed == 2.6
+    assert "# my hand-written config — this comment must survive" in path.read_text()
+
+
+def test_deleting_the_last_preset_leaves_no_presets_header(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(CONFIG_WITH_COMMENTS)
+
+    delete_preset(path, "old")
+
+    _, presets = load_config(path)
+    assert presets == {}
+    assert "[presets" not in path.read_text()
+    assert "speed = 2.6  # trailing comment" in path.read_text()
+
+
+def test_deleting_an_unknown_preset_raises_and_writes_nothing(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(CONFIG_WITH_COMMENTS)
+    before = path.read_text()
+
+    with pytest.raises(KeyError):
+        delete_preset(path, "nope")
+
+    assert path.read_text() == before

@@ -429,3 +429,55 @@ def save_preset(path: pathlib.Path | None, preset: Preset) -> None:
     merged = dict(existing)
     merged[preset.name] = preset
     _write_tables(path, "presets", _preset_tables(merged))
+
+
+def delete_preset(path: pathlib.Path | None, name: str) -> None:
+    """Remove `name` from the config file's presets.
+
+    Raises `KeyError` if no such preset exists, without touching the file, and
+    `ConfigError` if the file is already invalid — the same read-validate-write
+    discipline `save_preset` uses. Deleting the last preset leaves no empty
+    [presets] header behind.
+    """
+    path = pathlib.Path(path) if path else DEFAULT_CONFIG_PATH
+    _, existing = load_config(path)
+    if name not in existing:
+        raise KeyError(name)
+    remaining = {key: value for key, value in existing.items() if key != name}
+    _write_tables(path, "presets", _preset_tables(remaining))
+
+
+def _place_tables(places: dict[str, Place]) -> dict[str, dict]:
+    """The TOML shape of a place collection, name-sorted for a stable file."""
+    return {
+        name: {"point": [item.point[0], item.point[1]]}
+        for name, item in sorted(places.items())
+    }
+
+
+def save_place(path: pathlib.Path | None, place: Place) -> None:
+    """Write `place` into the config file, replacing any place of the same name.
+
+    Everything outside the [places.*] tables is preserved byte for byte,
+    including line endings and the [presets.*] and [profiles.*] sections. An
+    out-of-range point raises `ConfigError` before the file is touched.
+    """
+    path = pathlib.Path(path) if path else DEFAULT_CONFIG_PATH
+    # Validate through the same path the loader uses, before touching the disk.
+    _parse_point([place.point[0], place.point[1]], place.name)
+    merged = dict(load_places(path))
+    merged[place.name] = place
+    _write_tables(path, "places", _place_tables(merged))
+
+
+def delete_place(path: pathlib.Path | None, name: str) -> None:
+    """Remove `name` from the config file's places.
+
+    Raises `KeyError` if no such place exists, without touching the file.
+    """
+    path = pathlib.Path(path) if path else DEFAULT_CONFIG_PATH
+    existing = load_places(path)
+    if name not in existing:
+        raise KeyError(name)
+    remaining = {key: value for key, value in existing.items() if key != name}
+    _write_tables(path, "places", _place_tables(remaining))
