@@ -11,11 +11,25 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
-from ios_loc.presets import ConfigError, Preset, load_config, resolve_walk, save_preset
+from ios_loc.presets import (
+    ConfigError,
+    Place,
+    Preset,
+    delete_place,
+    delete_preset,
+    load_config,
+    load_places,
+    resolve_walk,
+    save_place,
+    save_preset,
+)
 from ios_loc.routing import RoutingError
 from ios_loc.session import _PROGRAMMING_ERRORS
 from ios_loc.web.models import (
     PinRequest,
+    PlaceIn,
+    PlaceOut,
+    PlacesListOut,
     PresetIn,
     PresetOut,
     PresetsListOut,
@@ -58,6 +72,12 @@ def create_app(
         except ConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    def _places():
+        try:
+            return load_places(config_path)
+        except ConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/presets", response_model=PresetsListOut)
     def list_presets() -> PresetsListOut:
         profiles, presets = _config()
@@ -82,6 +102,46 @@ def create_app(
         except OSError as exc:
             raise HTTPException(status_code=500, detail=f"could not write config: {exc}") from exc
         return PresetOut.from_preset(preset)
+
+    @app.delete("/api/presets/{name}", status_code=204)
+    def remove_preset(name: str) -> None:
+        try:
+            delete_preset(config_path, name)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"unknown preset {name!r}") from exc
+        except ConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"could not write config: {exc}") from exc
+
+    @app.get("/api/places", response_model=PlacesListOut)
+    def list_places() -> PlacesListOut:
+        places = _places()
+        return PlacesListOut(
+            places=[PlaceOut.from_place(p) for p in sorted(places.values(), key=lambda p: p.name)]
+        )
+
+    @app.post("/api/places", response_model=PlaceOut)
+    def create_place(body: PlaceIn) -> PlaceOut:
+        place = Place(name=body.name, point=(body.point[0], body.point[1]))
+        try:
+            save_place(config_path, place)
+        except ConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"could not write config: {exc}") from exc
+        return PlaceOut.from_place(place)
+
+    @app.delete("/api/places/{name}", status_code=204)
+    def remove_place(name: str) -> None:
+        try:
+            delete_place(config_path, name)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"unknown place {name!r}") from exc
+        except ConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"could not write config: {exc}") from exc
 
     @app.post("/api/route", response_model=RouteResponse)
     async def build_route(body: RouteRequest) -> RouteResponse:

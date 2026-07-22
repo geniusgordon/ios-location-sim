@@ -75,6 +75,72 @@
         "title": "PinRequest",
         "type": "object"
       },
+      "PlaceIn": {
+        "properties": {
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "point": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Point",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "point"
+        ],
+        "title": "PlaceIn",
+        "type": "object"
+      },
+      "PlaceOut": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "point": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Point",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "point"
+        ],
+        "title": "PlaceOut",
+        "type": "object"
+      },
+      "PlacesListOut": {
+        "properties": {
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/PlaceOut"
+            },
+            "title": "Places",
+            "type": "array"
+          }
+        },
+        "required": [
+          "places"
+        ],
+        "title": "PlacesListOut",
+        "type": "object"
+      },
       "PresetIn": {
         "properties": {
           "loop": {
@@ -577,6 +643,92 @@
         "summary": "Set Pin"
       }
     },
+    "/api/places": {
+      "get": {
+        "operationId": "list_places_api_places_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlacesListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Places"
+      },
+      "post": {
+        "operationId": "create_place_api_places_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Place"
+      }
+    },
+    "/api/places/{name}": {
+      "delete": {
+        "operationId": "remove_place_api_places__name__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Place"
+      }
+    },
     "/api/presets": {
       "get": {
         "operationId": "list_presets_api_presets_get",
@@ -629,6 +781,38 @@
           }
         },
         "summary": "Create Preset"
+      }
+    },
+    "/api/presets/{name}": {
+      "delete": {
+        "operationId": "remove_preset_api_presets__name__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Preset"
       }
     },
     "/api/route": {

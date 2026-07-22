@@ -7,7 +7,7 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 from ios_loc.path import Coord
-from ios_loc.presets import Preset
+from ios_loc.presets import Place, Preset
 from ios_loc.runner import WalkStats
 from ios_loc.walker import Fix
 
@@ -87,6 +87,24 @@ class PresetIn(BaseModel):
     waypoints: list[Coord] = Field(min_length=2)
     profile: str = "walk"
     loop: bool = False
+
+
+class PlaceOut(BaseModel):
+    name: str
+    point: list[float]
+
+    @classmethod
+    def from_place(cls, place: Place) -> "PlaceOut":
+        return cls(name=place.name, point=[place.point[0], place.point[1]])
+
+
+class PlacesListOut(BaseModel):
+    places: list[PlaceOut]
+
+
+class PlaceIn(BaseModel):
+    name: str = Field(min_length=1)
+    point: Coord
 
 
 class RouteRequest(BaseModel):

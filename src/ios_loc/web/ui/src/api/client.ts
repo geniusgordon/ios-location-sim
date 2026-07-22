@@ -1,5 +1,8 @@
 import type {
   PinRequest,
+  Place,
+  PlaceIn,
+  PlacesList,
   PresetIn,
   Preset,
   PresetsList,
@@ -90,6 +93,24 @@ export function getPresets(signal?: AbortSignal): Promise<PresetsList> {
 
 export function savePreset(body: PresetIn, signal?: AbortSignal): Promise<Preset> {
   return request<Preset>("/api/presets", json("POST", body, signal))
+}
+
+export function deletePreset(name: string, signal?: AbortSignal): Promise<void> {
+  // encodeURIComponent, not raw interpolation: a saved name may contain a
+  // space or a slash, and the server matches the decoded path segment.
+  return request<void>(`/api/presets/${encodeURIComponent(name)}`, { method: "DELETE", signal })
+}
+
+export function getPlaces(signal?: AbortSignal): Promise<PlacesList> {
+  return request<PlacesList>("/api/places", { method: "GET", signal })
+}
+
+export function savePlace(body: PlaceIn, signal?: AbortSignal): Promise<Place> {
+  return request<Place>("/api/places", json("POST", body, signal))
+}
+
+export function deletePlace(name: string, signal?: AbortSignal): Promise<void> {
+  return request<void>(`/api/places/${encodeURIComponent(name)}`, { method: "DELETE", signal })
 }
 
 export function postRoute(body: RouteRequest, signal?: AbortSignal): Promise<RouteResponse> {

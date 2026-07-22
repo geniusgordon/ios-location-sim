@@ -6,7 +6,7 @@ from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocket as StarletteWebSocket
 
-from ios_loc.presets import Preset, load_config, save_preset
+from ios_loc.presets import Preset, load_config, load_places, save_preset
 from ios_loc.routing import RoutingError
 from ios_loc.web.api import create_app
 from ios_loc.web.service import WalkService
@@ -584,3 +584,87 @@ def test_pin_programming_error_is_500_not_503(tmp_path):
     with TestClient(app, raise_server_exceptions=False) as client:
         resp = client.post("/api/pin", json={"lat": 48.858666, "lon": 2.293991})
         assert resp.status_code == 500
+
+
+def test_deleting_a_preset_removes_it(context):
+    client, config, *_ = context
+    client.post(
+        "/api/presets",
+        json={"name": "home", "waypoints": [[25.0, 121.0], [25.1, 121.1]]},
+    )
+
+    response = client.delete("/api/presets/home")
+
+    assert response.status_code == 204
+    _, presets = load_config(config)
+    assert presets == {}
+
+
+def test_deleting_an_unknown_preset_is_a_404(context):
+    client, *_ = context
+    response = client.delete("/api/presets/nope")
+    assert response.status_code == 404
+    assert "nope" in response.json()["detail"]
+
+
+def test_deleting_a_preset_whose_name_needs_escaping(context):
+    client, config, *_ = context
+    client.post(
+        "/api/presets",
+        json={"name": "my route", "waypoints": [[25.0, 121.0], [25.1, 121.1]]},
+    )
+
+    assert client.delete("/api/presets/my%20route").status_code == 204
+    _, presets = load_config(config)
+    assert presets == {}
+
+
+def test_places_start_empty(context):
+    client, *_ = context
+    assert client.get("/api/places").json() == {"places": []}
+
+
+def test_saving_a_place_persists_it_and_lists_it(context):
+    client, config, *_ = context
+    response = client.post("/api/places", json={"name": "home", "point": [25.0, 121.0]})
+
+    assert response.status_code == 200
+    assert response.json() == {"name": "home", "point": [25.0, 121.0]}
+    assert load_places(config)["home"].point == (25.0, 121.0)
+    assert client.get("/api/places").json()["places"] == [{"name": "home", "point": [25.0, 121.0]}]
+
+
+def test_places_are_listed_name_sorted(context):
+    client, *_ = context
+    client.post("/api/places", json={"name": "zoo", "point": [1.0, 2.0]})
+    client.post("/api/places", json={"name": "attic", "point": [3.0, 4.0]})
+
+    names = [place["name"] for place in client.get("/api/places").json()["places"]]
+    assert names == ["attic", "zoo"]
+
+
+def test_saving_an_out_of_range_place_is_a_400(context):
+    client, *_ = context
+    response = client.post("/api/places", json={"name": "bad", "point": [125.0, 0.0]})
+    assert response.status_code == 400
+    assert "out of range" in response.json()["detail"]
+
+
+def test_saving_a_place_with_an_empty_name_is_a_422(context):
+    client, *_ = context
+    assert client.post("/api/places", json={"name": "", "point": [1.0, 2.0]}).status_code == 422
+
+
+def test_deleting_a_place_removes_it(context):
+    client, config, *_ = context
+    client.post("/api/places", json={"name": "home", "point": [25.0, 121.0]})
+
+    assert client.delete("/api/places/home").status_code == 204
+    assert load_places(config) == {}
+
+
+def test_deleting_an_unknown_place_is_a_404(context):
+    client, *_ = context
+    response = client.delete("/api/places/nope")
+    assert response.status_code == 404
+    assert "nope" in response.json()["detail"]
