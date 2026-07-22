@@ -124,6 +124,10 @@ export interface DockProps {
   offline: boolean
   pinArmed: boolean
   onPinArmedChange(armed: boolean): void
+  /** A failed set-location pin (map-tap while armed). LiveDock never mounts
+   *  for this failure -- pin errors leave the dock in one of the other two
+   *  branches -- so it is rendered here instead of via `meta.error`. */
+  pinError: string | null
   onRemoveLast(): void
   onClear(): void
   onOpenLibrary(): void
@@ -172,6 +176,11 @@ export default function Dock(props: DockProps) {
               {props.loadError}
             </span>
           ) : null}
+          {props.pinError ? (
+            <span className="text-destructive max-w-80 truncate text-xs" title={props.pinError}>
+              {props.pinError}
+            </span>
+          ) : null}
           <div className="ml-auto">
             <PinControl
               armed={props.pinArmed}
@@ -217,6 +226,11 @@ export default function Dock(props: DockProps) {
             {startError ? (
               <span className="text-destructive max-w-60 truncate text-xs" title={startError}>
                 {startError}
+              </span>
+            ) : null}
+            {props.pinError ? (
+              <span className="text-destructive max-w-60 truncate text-xs" title={props.pinError}>
+                {props.pinError}
               </span>
             ) : null}
             <RouteOptions

@@ -33,6 +33,7 @@ export default function App() {
   const [route, setRoute] = useState<DraftRoute>(emptyRoute)
   const [settings, setSettings] = useState<DraftSettings>(defaultSettings)
   const [pinArmed, setPinArmed] = useState(false)
+  const [pinError, setPinError] = useState<string | null>(null)
 
   // Only the newest load may write state. Two overlapping fetches (StrictMode
   // double-invokes the mount effect in dev) would otherwise let whichever
@@ -74,11 +75,17 @@ export default function App() {
   const onMapClick = (point: LatLon) => {
     if (pinArmed) {
       setPinArmed(false)
-      // Errors surface through the walk stream's state message; a failed pin
-      // leaves the device untouched.
-      void pinLocation(point[0], point[1]).catch(() => {})
+      setPinError(null)
+      // A 409 (walk already running) never broadcasts a state message, and
+      // even a broadcast failure lands in `meta.error`, which only renders
+      // inside LiveDock -- invisible while the dock is showing the route
+      // editor. Surface the server's own text here instead.
+      void pinLocation(point[0], point[1]).catch((error: unknown) => {
+        setPinError(errorText(error))
+      })
       return
     }
+    setPinError(null)
     setRoute((r) => addWaypoint(r, point))
   }
 
@@ -106,6 +113,7 @@ export default function App() {
         offline={offline}
         pinArmed={pinArmed}
         onPinArmedChange={setPinArmed}
+        pinError={pinError}
         onRemoveLast={() => setRoute((r) => removeLast(r))}
         onClear={() => setRoute(clearRoute())}
         onOpenLibrary={() => setLibraryOpen(true)}
