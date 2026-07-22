@@ -12,6 +12,7 @@ export type RouteResponse = S["RouteResponse"]
 export type StartRequest = S["StartRequest"]
 export type WalkStatus = S["WalkStatus"]
 export type WalkStateName = S["WalkState"]
+export type PinRequest = S["PinRequest"]
 
 /** `[latitude, longitude]` — the wire order everywhere in this API. */
 export type LatLon = [number, number]

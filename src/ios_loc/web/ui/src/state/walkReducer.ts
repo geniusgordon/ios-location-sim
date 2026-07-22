@@ -123,3 +123,8 @@ export function metaEquals(a: WalkMeta, b: WalkMeta): boolean {
 export function isRunning(state: WalkStateName): boolean {
   return state === "starting" || state === "walking" || state === "reconnecting"
 }
+
+/** True while the device is held — a walk OR a pin — the states with a live Stop. */
+export function canStop(state: WalkStateName): boolean {
+  return isRunning(state) || state === "pinned"
+}

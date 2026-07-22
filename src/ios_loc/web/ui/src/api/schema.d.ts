@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Pin */
+        post: operations["set_pin_api_pin_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/presets": {
         parameters: {
             query?: never;
@@ -81,6 +98,16 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * PinRequest
+         * @description A single point to hold the device at — the GUI's `ios-loc set`.
+         */
+        PinRequest: {
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
         };
         /** PresetIn */
         PresetIn: {
@@ -202,7 +229,7 @@ export interface components {
          * WalkState
          * @enum {string}
          */
-        WalkState: "idle" | "starting" | "walking" | "reconnecting" | "finished" | "error";
+        WalkState: "idle" | "starting" | "walking" | "reconnecting" | "finished" | "error" | "pinned";
         /** WalkStatus */
         WalkStatus: {
             /** Error */
@@ -235,6 +262,39 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    set_pin_api_pin_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalkStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_presets_api_presets_get: {
         parameters: {
             query?: never;

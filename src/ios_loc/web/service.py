@@ -126,6 +126,10 @@ class WalkService:
         self._run: _Run | None = None
         self._state = WalkState.IDLE
         self._error: str | None = None
+        # A held "set location" pin: one open session, no tick loop. Separate
+        # from self._run because a pin has no walker, path, trail, or stats.
+        self._pin_session: object | None = None
+        self._pin_fix: FixOut | None = None
         self._subscribers: set[asyncio.Queue] = set()
         # Serializes start()/stop() against each other end-to-end -- including
         # the await on session.start() and the teardown -- so neither method
@@ -139,6 +143,10 @@ class WalkService:
     def status(self) -> WalkStatus:
         run = self._run
         if run is None:
+            if self._pin_fix is not None:
+                return WalkStatus(
+                    state=self._state, error=self._error, fix=self._pin_fix
+                )
             return WalkStatus(state=self._effective_state(), error=self._error)
         return WalkStatus(
             state=self._effective_state(),
@@ -158,6 +166,18 @@ class WalkService:
             run = self._run
             if run is not None and run.task is not None and not run.task.done():
                 raise WalkAlreadyRunning("a walk is already running")
+
+            # Starting a walk supersedes a pin: hand the device to the walk.
+            # The walk opens its own session, so the pinned one must be closed
+            # here or it leaks (two owners of one device).
+            if self._pin_session is not None:
+                pin_session = self._pin_session
+                self._pin_session = None
+                self._pin_fix = None
+                try:
+                    await pin_session.stop(clear=False)
+                except Exception as exc:  # noqa: BLE001 — must not block the start
+                    logger.warning("could not release the pin before starting: %s", exc)
 
             self._state = WalkState.STARTING
             self._error = None
@@ -200,8 +220,91 @@ class WalkService:
             self._broadcast({"type": "state", "state": self._state.value, "error": None})
             return self.status()
 
+    async def pin(self, lat: float, lon: float) -> WalkStatus:
+        """Hold the device at a fixed point — the GUI equivalent of `ios-loc set`.
+
+        Owns the device like a walk does, so it takes the same lock and refuses
+        to run while a walk is active. Starting a walk later simply replaces the
+        pin (a pin holds no accumulated state worth protecting).
+        """
+        async with self._lock:
+            run = self._run
+            if run is not None and run.task is not None and not run.task.done():
+                raise WalkAlreadyRunning("a walk is already running")
+            try:
+                if self._pin_session is None:
+                    session = self._session_factory()
+                    await session.start()
+                    self._pin_session = session
+                await self._pin_session.set(lat, lon)
+            except BaseException as exc:
+                # A half-open session must not leak. Clear the device, drop the
+                # session, record the failure, and let the original exception
+                # propagate so the API maps it (programming error -> 500,
+                # device failure -> 503).
+                if self._pin_session is not None:
+                    try:
+                        await self._pin_session.stop(clear=True)
+                    except Exception as teardown_exc:  # noqa: BLE001 — teardown must not mask the cause
+                        logger.warning(
+                            "could not clear the device after a failed pin: %s", teardown_exc
+                        )
+                    self._pin_session = None
+                self._pin_fix = None
+                self._state = WalkState.IDLE
+                self._error = f"{type(exc).__name__}: {exc}"
+                self._broadcast(
+                    {"type": "state", "state": self._state.value, "error": self._error}
+                )
+                raise
+            self._pin_fix = FixOut(
+                elapsed_s=0.0, lat=lat, lon=lon, distance_m=0.0, speed_mps=0.0, paused=False
+            )
+            self._state = WalkState.PINNED
+            self._error = None
+            # A leftover finished/errored run must not shadow the pin in
+            # status(): status() prefers self._run whenever it is set, so a
+            # stale run (task already done, already torn down by _drive's
+            # finally) would report the OLD walk's route/trail/stats/fix
+            # under state=PINNED instead of the pin itself.
+            self._run = None
+            # A "fix" message (not "state") so the store's fix channel fires and
+            # the map's live dot moves to the pin. Stats are zero: a pin has no
+            # elapsed time, distance, or laps.
+            self._broadcast(
+                {
+                    "type": "fix",
+                    "fix": self._pin_fix.model_dump(),
+                    "stats": StatsOut(
+                        elapsed_s=0.0, distance_m=0.0, laps=0, reconnects=0, ticks=0
+                    ).model_dump(),
+                    "state": self._state.value,
+                }
+            )
+            return self.status()
+
     async def stop(self) -> None:
         async with self._lock:
+            # A held pin is torn down here too -- one Stop button for both.
+            if self._pin_session is not None:
+                session = self._pin_session
+                self._pin_session = None
+                self._pin_fix = None
+                # A leftover finished/errored run must not shadow IDLE in
+                # status(): if the pin was set over a stale run, status()
+                # would keep reporting that run's route/trail after this
+                # stop() otherwise.
+                self._run = None
+                self._state = WalkState.IDLE
+                self._error = None
+                try:
+                    await session.stop(clear=True)
+                except Exception as exc:  # noqa: BLE001 — teardown must not raise
+                    logger.warning("could not stop the pin session cleanly: %s", exc)
+                self._broadcast(
+                    {"type": "state", "state": self._state.value, "error": None}
+                )
+                return
             run = self._run
             if run is None:
                 # Nothing running, but a previous failed start() may have left

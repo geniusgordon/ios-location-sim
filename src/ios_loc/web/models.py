@@ -19,6 +19,7 @@ class WalkState(str, Enum):
     RECONNECTING = "reconnecting"
     FINISHED = "finished"
     ERROR = "error"
+    PINNED = "pinned"
 
 
 class FixOut(BaseModel):
@@ -114,6 +115,13 @@ class StartRequest(BaseModel):
     duration_s: float | None = Field(default=None, gt=0)
     # Anything much larger puts emitted positions kilometres off the route.
     scatter_m: float = Field(default=3.0, ge=0, le=100)
+
+
+class PinRequest(BaseModel):
+    """A single point to hold the device at — the GUI's `ios-loc set`."""
+
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
 
 
 class WalkStatus(BaseModel):

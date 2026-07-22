@@ -56,6 +56,12 @@ The page is one map with a status bar and an on-demand sidebar:
   draws the returned polyline. Saving writes a `[presets.<name>]` table back to
   the config, so `ios-loc walk <name>` works on anything you draw.
 - **Start a walk** — profile, loop, duration, and GPS scatter.
+- **Coordinate box** — a floating field on the map. Paste `lat,lon`, e.g.
+  `48.858666,2.293991`, and it holds the device there — the GUI form of
+  `ios-loc set`. Stop releases it, same as it ends a walk.
+- **Quick start** — with the map idle (no preset, nothing loaded), click it to
+  drop points directly; a floating bar shows the point count and route length
+  with Undo/Clear/Start, so a walk can begin without ever touching a preset.
 
 While a walk runs, the map follows the live dot with a fading trail of the last
 120 fixes; panning detaches following and the crosshair button reattaches it.
