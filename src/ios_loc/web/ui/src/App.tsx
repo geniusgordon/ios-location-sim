@@ -53,7 +53,8 @@ export default function App() {
   }, [reloadPresets])
 
   const meta = useWalkMeta()
-  const editing = mode === "editor" && sidebarOpen && !isRunning(meta.state)
+  // Map-first: editable whenever no walk holds the device, sidebar or not.
+  const editing = !isRunning(meta.state)
 
   // The moment the draft stops being the preset, it is an ad-hoc route -- keeping
   // the name would start the OLD route on the phone while the map shows the new one.
@@ -63,14 +64,10 @@ export default function App() {
   }, [])
 
   const [costing, setCosting] = useState("pedestrian")
-  // Gated on the sidebar, not on the editor: picking a preset switches to "start"
-  // mode, and without a preview its waypoints would draw as disconnected dots.
-  // One debounced, server-cached Valhalla call.
-  const preview = useRoutePreview(
-    draftWaypoints,
-    costing,
-    sidebarOpen && !offline && !isRunning(meta.state),
-  )
+  // Gated on the device being free, not on the sidebar: a map-first route
+  // must draw as a line, not disconnected dots, whether or not the sidebar
+  // is open. One debounced, server-cached Valhalla call.
+  const preview = useRoutePreview(draftWaypoints, costing, !offline && !isRunning(meta.state))
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -84,6 +81,11 @@ export default function App() {
             editDraft((w) => w.map((p, i) => (i === index ? point : p)))
           }
           onWaypointClick={(index) => editDraft((w) => w.filter((_, i) => i !== index))}
+          lengthM={preview.lengthM}
+          costing={costing}
+          onRemoveLast={() => editDraft((w) => w.slice(0, -1))}
+          onClearWaypoints={() => editDraft(() => [])}
+          onStarted={() => setSidebarOpen(false)}
         />
       </div>
       <StatusBar onOpenSidebar={() => setSidebarOpen(true)} />

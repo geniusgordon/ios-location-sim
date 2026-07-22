@@ -3,6 +3,7 @@ import maplibregl from "maplibre-gl"
 import { Crosshair } from "lucide-react"
 import type { LatLon } from "@/api/types"
 import CoordBox from "@/components/CoordBox"
+import QuickStartBar from "@/components/QuickStartBar"
 import { Button } from "@/components/ui/button"
 import { fromLngLat, toLngLat } from "@/lib/coords"
 import { initialFollow, onRecenter, onUserPan, shouldCenter } from "@/lib/follow"
@@ -55,6 +56,12 @@ export interface MapViewProps {
   onMapClick(point: LatLon): void
   onWaypointDrag(index: number, point: LatLon): void
   onWaypointClick(index: number): void
+  // Quick-start bar wiring.
+  lengthM: number | null
+  costing: string
+  onRemoveLast(): void
+  onClearWaypoints(): void
+  onStarted(): void
 }
 
 export default function MapView(props: MapViewProps) {
@@ -234,6 +241,14 @@ export default function MapView(props: MapViewProps) {
     <div className="relative h-full w-full">
       <div ref={container} className="h-full w-full" />
       <CoordBox />
+      <QuickStartBar
+        waypoints={props.draftWaypoints}
+        lengthM={props.lengthM}
+        costing={props.costing}
+        onRemoveLast={props.onRemoveLast}
+        onClear={props.onClearWaypoints}
+        onStarted={props.onStarted}
+      />
       <Button
         variant="secondary"
         size="icon"
