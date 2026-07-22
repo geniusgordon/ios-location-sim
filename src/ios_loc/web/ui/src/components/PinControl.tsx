@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { MapPin } from "lucide-react"
+import { Keyboard, MapPin } from "lucide-react"
 import { errorText, pinLocation } from "@/api/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -56,7 +56,7 @@ export default function PinControl(props: PinControlProps) {
         <PopoverTrigger
           render={
             <Button variant="ghost" size="sm" aria-label="Pin by coordinates" disabled={props.disabled}>
-              …
+              <Keyboard className="size-4" />
             </Button>
           }
         />
@@ -67,17 +67,21 @@ export default function PinControl(props: PinControlProps) {
               placeholder="48.858666,2.293991"
               value={text}
               onChange={(event) => setText(event.target.value)}
+              disabled={props.disabled}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !pinning) onSubmit()
+                if (event.key === "Enter" && !pinning && !props.disabled) onSubmit()
               }}
             />
-            <Button size="sm" disabled={pinning} onClick={onSubmit}>
+            <Button size="sm" disabled={pinning || props.disabled} onClick={onSubmit}>
               {pinning ? <Spinner className="size-4" /> : <MapPin className="size-4" />} Set location
             </Button>
             {error ? (
               <p className="text-destructive text-xs" title={error}>
                 {error}
               </p>
+            ) : null}
+            {props.disabled ? (
+              <p className="text-muted-foreground text-xs">Stop the walk before setting a location.</p>
             ) : null}
           </div>
         </PopoverContent>
