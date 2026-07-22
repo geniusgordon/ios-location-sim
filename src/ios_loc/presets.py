@@ -281,12 +281,12 @@ _TOP_LEVEL_TABLE_RE = re.compile(
 )
 
 
-def _strip_preset_tables(text: str) -> str:
-    """Return `text` with every [presets.*] table removed, everything else verbatim.
+def _strip_tables(text: str, kind: str) -> str:
+    """Return `text` with every [<kind>.*] table removed, everything else verbatim.
 
-    A table block runs from its header line to the next table header. Only the
-    preset tables are regenerated on save, so a hand-written [profiles.*] section
-    and its comments survive untouched.
+    A table block runs from its header line to the next table header. Each writer
+    regenerates only its own kind, so a hand-written [profiles.*] section and its
+    comments -- and the other kind's tables -- survive untouched.
     """
     kept: list[str] = []
     dropping = False
@@ -294,10 +294,58 @@ def _strip_preset_tables(text: str) -> str:
         match = _TOP_LEVEL_TABLE_RE.match(line)
         if match is not None:
             name = match.group(1).strip()
-            dropping = name == "presets" or name.startswith("presets.")
+            dropping = name == kind or name.startswith(f"{kind}.")
         if not dropping:
             kept.append(line)
     return "".join(kept)
+
+
+def _write_atomic(path: pathlib.Path, body: str) -> None:
+    """Write `body` to `path` atomically: mkstemp in the target directory (a
+    collision-proof name), same-directory os.replace so the rename is atomic,
+    and cleanup of the temp file if anything fails partway through, so a bad
+    write never leaves a stray .tmp behind. newline="" keeps the caller's line
+    endings byte for byte.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp: str | None = None
+    try:
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
+        with os.fdopen(fd, "w", newline="") as handle:
+            handle.write(body)
+        os.replace(tmp, path)
+    except BaseException:
+        if tmp is not None:
+            pathlib.Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def _write_tables(path: pathlib.Path, kind: str, tables: dict[str, dict]) -> None:
+    """Rewrite the [<kind>.*] section of `path` as `tables`, preserving everything
+    else. An empty `tables` leaves no header of that kind behind at all.
+    """
+    # Read with newline translation disabled so the preserved head keeps its
+    # original line endings (a CRLF-authored file is not silently rewritten).
+    existing_text = path.read_text(newline="") if path.exists() else ""
+    head = _strip_tables(existing_text, kind).rstrip()
+    if tables:
+        rendered = tomli_w.dumps({kind: tables})
+        body = f"{head}\n\n{rendered}" if head else rendered
+    else:
+        body = f"{head}\n" if head else ""
+    _write_atomic(path, body)
+
+
+def _preset_tables(presets: dict[str, Preset]) -> dict[str, dict]:
+    """The TOML shape of a preset collection, name-sorted for a stable file."""
+    return {
+        name: {
+            "waypoints": [[lat, lon] for lat, lon in item.waypoints],
+            "profile": item.profile,
+            "loop": item.loop,
+        }
+        for name, item in sorted(presets.items())
+    }
 
 
 def save_preset(path: pathlib.Path | None, preset: Preset) -> None:
@@ -331,38 +379,6 @@ def save_preset(path: pathlib.Path | None, preset: Preset) -> None:
             f"available: {', '.join(sorted(profiles))}"
         )
 
-    # Read with newline translation disabled so the preserved head keeps its
-    # original line endings byte for byte (e.g. a CRLF-authored file is not
-    # silently rewritten to LF).
-    existing_text = path.read_text(newline="") if path.exists() else ""
     merged = dict(existing)
     merged[preset.name] = preset
-
-    tables = {
-        name: {
-            "waypoints": [[lat, lon] for lat, lon in item.waypoints],
-            "profile": item.profile,
-            "loop": item.loop,
-        }
-        for name, item in sorted(merged.items())
-    }
-    rendered = tomli_w.dumps({"presets": tables})
-
-    head = _strip_preset_tables(existing_text).rstrip()
-    body = f"{head}\n\n{rendered}" if head else rendered
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Atomic temp + rename, mirroring routing.py's _write_cache: a
-    # collision-proof temp name via mkstemp, same-directory os.replace so the
-    # rename stays atomic, and cleanup of the temp file if anything fails
-    # partway through so a bad write never leaves a stray .tmp behind.
-    tmp: str | None = None
-    try:
-        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
-        with os.fdopen(fd, "w", newline="") as handle:
-            handle.write(body)
-        os.replace(tmp, path)
-    except BaseException:
-        if tmp is not None:
-            pathlib.Path(tmp).unlink(missing_ok=True)
-        raise
+    _write_tables(path, "presets", _preset_tables(merged))
