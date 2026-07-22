@@ -20,8 +20,12 @@ cd src/ios_loc/web/ui && pnpm test run   # frontend pure-logic tests
 cd src/ios_loc/web/ui && pnpm build      # rebuild the committed bundle in web/static/
 ```
 
-There is no linter or formatter configured. Every test runs under a 60s `pytest-timeout`
-cap, so a regression in the broadcast path fails loudly instead of hanging the suite.
+No linter or formatter is configured on the Python side. Every test runs under a 60s
+`pytest-timeout` cap, so a regression in the broadcast path fails loudly instead of
+hanging the suite. The frontend does have a linter — `cd src/ios_loc/web/ui && pnpm lint`
+(oxlint) — and `pnpm build` runs `tsc -b` first, so it is also the frontend typecheck.
+The full frontend gate is `pnpm test run && pnpm build && pnpm lint`; lint carries two
+expected `only-export-components` warnings in vendored shadcn files.
 
 Running against hardware needs tunneld up first (once per boot, needs sudo):
 
@@ -103,7 +107,24 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   flip anywhere else produces plausible-looking coordinates in the wrong
   hemisphere, with no error.
 - **`web/static/` is committed build output.** A change under `web/ui/` that is
-  not followed by `pnpm build` ships nothing.
+  not followed by `pnpm build` ships nothing. Nothing checks that the committed
+  bundle matches current source — a UI change committed without `pnpm build`
+  ships the *old* UI silently, and the Python suite stays green.
+- **The sidebar `Sheet` is deliberately non-modal.** `Sidebar.tsx` passes
+  `modal={false}`, `disablePointerDismissal`, and `showOverlay={false}`, and
+  clears the status bar with `data-[side=left]:bottom-14 data-[side=left]:h-auto`
+  against the `h-14` bar. A modal Sheet renders a backdrop over the map and
+  dismisses on outside-press, which swallows every map click — and the route
+  editor's whole job is clicking the map *while the sidebar is open*. That
+  failure passed every test. The `data-[side=left]:` prefix on the overrides is
+  load-bearing: an unprefixed class loses to `sheet.tsx`'s own variant-prefixed
+  `inset-y-0`/`h-full` under tailwind-merge.
+- **Frontend tests are pure-logic only** (`vitest.config.ts` pins `environment:
+  "node"`, `include: ["src/**/*.test.ts"]`). No jsdom, no component rendering —
+  so the suite cannot catch a re-modalled sidebar, a re-rendering map, or any
+  layout regression. Those are only ever caught in a real browser. Treat a green
+  `pnpm test run` as proof about reducers, the store, and the API client, not
+  about anything the DOM does.
 - **A set-location pin is a walk-parity device state.** `WalkService.pin()`
   holds one open session under the same lock as `start()`/`stop()`, so the
   device never gets two owners. Pinning while a walk runs is refused (409);
