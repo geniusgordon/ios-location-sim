@@ -24,7 +24,7 @@ ever talks to a device you have physically connected and trusted.
 | Device | iPhone/iPad on **iOS 17+**, connected by USB and trusted |
 | Privileges | `sudo`, once per boot, to start the tunnel daemon |
 | Network | Internet for routing and map tiles — both avoidable, see `--offline` |
-| Optional | Node 20+ and `pnpm`, only to modify the GUI frontend |
+| GUI only | Node 20+ and [`pnpm`](https://pnpm.io/installation) — the map GUI's assets are built from source, not committed |
 
 iOS 17 moved developer services behind a RemoteXPC tunnel that a privileged
 process has to create — that is what `tunneld` below is, and why it needs
@@ -40,8 +40,19 @@ uv sync                  # creates .venv and installs everything
 uv run ios-loc --help
 ```
 
-The GUI's built assets are committed, so `uv sync` is the whole install — no
-frontend build needed to use the tool.
+That is the whole install for the CLI (`walk`, `set`, `clear`, `doctor`). The
+map GUI additionally needs its frontend bundle built once — `web/static/` is
+generated output and is deliberately not committed:
+
+```bash
+cd src/ios_loc/web/ui
+pnpm install
+pnpm build               # writes the bundle to ../static
+```
+
+Rebuild after pulling changes that touch `src/ios_loc/web/ui/`. If you skip
+this, `ios-loc gui` refuses to start and prints the two commands above rather
+than serving a blank page.
 
 Start tunneld once per boot (needs sudo — it creates the Mac↔iPhone tunnel):
 
@@ -65,10 +76,10 @@ DVT:      OK — ready to simulate
 If tunneld is not running, `doctor` says so and prints the command that fixes
 it, rather than a traceback.
 
-To install the CLI globally instead of running it from the checkout:
+To install globally instead of running it from the checkout:
 
 ```bash
-uv tool install .
+uv tool install .        # runs pnpm build for you; needs Node + pnpm present
 ios-loc doctor
 ```
 
@@ -165,17 +176,18 @@ uv run python scripts/export_openapi.py   # regenerate the OpenAPI schema the fr
 
 ```bash
 cd src/ios_loc/web/ui
-pnpm install
 pnpm dev          # vite on 5173, proxying /api and /ws to uvicorn on 8765
 pnpm test run     # pure-logic tests (reducer, store, follow mode, API client)
-pnpm build        # writes the committed bundle to ../static
+pnpm build        # writes the bundle to ../static
 pnpm lint         # oxlint
 pnpm gen:api      # regenerates src/api/schema.d.ts from api-schema.json
 ```
 
-`src/ios_loc/web/static/` is committed, so `uv sync` alone is enough to run the
-tool — but it means **a UI change is not shipped until you re-run `pnpm build`
-and commit the result.**
+`src/ios_loc/web/static/` is gitignored build output: `pnpm dev` serves the UI
+from source, and `pnpm build` is what `ios-loc gui` reads. Wheels build it
+automatically — `uv build` / `uv tool install .` run `pnpm build` through a
+hatchling hook (`hatch_build.py`), so a released wheel always carries a bundle
+matching its source.
 
 ## Config
 

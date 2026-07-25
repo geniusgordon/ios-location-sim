@@ -9,6 +9,10 @@ via `pymobiledevice3`: hold a fixed point, or walk/cycle a routed path at a real
 pace for hours. Python 3.13, `uv`-managed, package at `src/ios_loc/`. The repo is
 public — keep the name of any specific game out of code, docs, and commits.
 
+Only source is committed: the GUI bundle under `src/ios_loc/web/static/` is gitignored
+build output, so `uv sync` installs the CLI and the GUI needs `pnpm build` (Node 20+)
+once in `src/ios_loc/web/ui/`.
+
 ## Commands
 
 ```bash
@@ -18,7 +22,7 @@ uv run pytest tests/test_walker.py::test_name -q   # single test
 uv run ios-loc --help
 uv run python scripts/export_openapi.py            # regenerate src/ios_loc/web/ui/api-schema.json
 cd src/ios_loc/web/ui && pnpm test run   # frontend pure-logic tests (94)
-cd src/ios_loc/web/ui && pnpm build      # rebuild the committed bundle in web/static/
+cd src/ios_loc/web/ui && pnpm build      # (re)build the bundle in web/static/ — required by `gui`
 ```
 
 No linter or formatter is configured on the Python side. Every test runs under a 60s
@@ -108,10 +112,23 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   those two functions are the only places in the app that flip a pair. A third
   flip anywhere else produces plausible-looking coordinates in the wrong
   hemisphere, with no error.
-- **`web/static/` is committed build output.** A change under `web/ui/` that is
-  not followed by `pnpm build` ships nothing. Nothing checks that the committed
-  bundle matches current source — a UI change committed without `pnpm build`
-  ships the *old* UI silently, and the Python suite stays green.
+- **`web/static/` is generated, gitignored, and required by `gui`.** A change
+  under `web/ui/` that is not followed by `pnpm build` is invisible to
+  `ios-loc gui`, which reads the built bundle, never the source. Two guards
+  exist because nothing verifies the local bundle matches current source:
+  `cli._require_ui_assets()` refuses to serve when `static/index.html` is
+  absent (a missing bundle would otherwise mount nothing and serve a bare 404),
+  and `hatch_build.py` runs `pnpm build` for the wheel target so a released
+  wheel always carries a bundle matching its source. That hook keys off
+  `version == "editable"`, NOT `self.target_name` — hatchling builds an
+  editable install as the *wheel* target, so a `target_name` check would never
+  match and every `uv sync` would demand pnpm.
+
+- **Python tests must pass on a checkout with no bundle.** The frontend is not
+  committed, so any test that touches `web/static/` either skips when it is
+  absent (`test_a_present_bundle_is_a_real_build`) or fakes it
+  (`built_assets` in `tests/test_cli_gui.py`). A test asserting the real bundle
+  exists turns "I have not run pnpm build" into a red suite for everyone.
 - **The sidebar must never cover or swallow the map on desktop.**
   `Sidebar.tsx` renders as an inline flex column (`w-[360px]`, no scrim) when
   `overlay` is false, and takes the fixed-drawer + `bg-black/30` scrim branch

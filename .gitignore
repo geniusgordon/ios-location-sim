@@ -3,3 +3,7 @@ __pycache__/
 .venv/
 .pytest_cache/
 .superpowers/
+
+# Built GUI assets — produced by `pnpm build` in src/ios_loc/web/ui.
+src/ios_loc/web/static/
+dist/

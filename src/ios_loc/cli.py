@@ -312,6 +312,26 @@ def walk(
 
 DEFAULT_STATIC_DIR = pathlib.Path(__file__).parent / "web" / "static"
 
+UI_SOURCE_DIR = pathlib.Path(__file__).parent / "web" / "ui"
+
+
+def _require_ui_assets(static_dir: pathlib.Path) -> None:
+    """Refuse to serve a GUI with no UI behind it.
+
+    `web/static/` is build output and is not committed, so a fresh checkout has
+    no bundle until `pnpm build` runs. Mounting nothing would leave the API
+    working and the page a bare 404 — a confusing way to learn you skipped a
+    build step.
+    """
+    if (static_dir / "index.html").exists():
+        return
+    _fail(
+        f"FAILED: the GUI assets are not built ({static_dir} has no index.html).\n"
+        "Build them once with Node 20+ and pnpm:\n"
+        f"    cd {UI_SOURCE_DIR} && pnpm install && pnpm build\n"
+        "The other commands (walk, set, clear, doctor) need no build."
+    )
+
 
 def build_gui_app(
     *,
@@ -355,6 +375,7 @@ def gui(
 ) -> None:
     """Serve the map GUI on localhost."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+    _require_ui_assets(DEFAULT_STATIC_DIR)
     application = build_gui_app(config=config, offline=offline, udid=udid)
     url = f"http://{host}:{port}"
     typer.echo(f"serving {url}")
