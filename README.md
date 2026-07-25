@@ -47,21 +47,26 @@ uv run ios-loc gui --no-open --port 9000
 uv run ios-loc gui --offline     # disables routing; saved presets still work
 ```
 
-The page is one map with a status bar and an on-demand sidebar:
+![The map GUI: a drawn route on the Walk tab](docs/screenshot.png)
 
-- **Presets** — everything in `~/.config/ios-loc/config.toml`. Picking one drops
-  its waypoints on the map.
-- **Route editor** — click the map to add a waypoint, drag to move one, click it
-  to remove it. Each edit re-routes through Valhalla (debounced ~300 ms) and
-  draws the returned polyline. Saving writes a `[presets.<name>]` table back to
-  the config, so `ios-loc walk <name>` works on anything you draw.
-- **Start a walk** — profile, loop, duration, and GPS scatter.
-- **Coordinate box** — a floating field on the map. Paste `lat,lon`, e.g.
-  `48.858666,2.293991`, and it holds the device there — the GUI form of
-  `ios-loc set`. Stop releases it, same as it ends a walk.
-- **Quick start** — with the map idle (no preset, nothing loaded), click it to
-  drop points directly; a floating bar shows the point count and route length
-  with Undo/Clear/Start, so a walk can begin without ever touching a preset.
+The page is a full-screen map beside a sidebar (open by default, collapsible;
+it overlays the map on narrow screens). The sidebar has two tabs, and the tab
+you are on decides what a map tap does:
+
+- **Set location** — a coordinate box (paste `lat,lon`, e.g.
+  `48.858666,2.293991`), a save-place form, and your saved places. On this tab,
+  tapping the map holds the device at that point — the GUI form of `ios-loc
+  set`. Naming a coordinate saves it as a place; picking one sets the device
+  there. Stop releases it, same as it ends a walk. With no device connected the
+  coordinate is still saved as a place, just not pushed to a phone.
+- **Walk** — the route editor and everything a walk needs. On this tab, tapping
+  the map adds a waypoint; drag to move one, click it to remove it. Each edit
+  re-routes through Valhalla (debounced ~300 ms) and draws the returned
+  polyline. Set profile, routing mode, loop, duration, and GPS scatter, then
+  Start. Saving writes a `[presets.<name>]` table back to the config, so
+  `ios-loc walk <name>` works on anything you draw, and your saved routes are
+  listed below the editor. While a walk runs, this tab becomes the live view —
+  elapsed, distance, speed, laps, reconnects, and a Stop button.
 
 While a walk runs, the map follows the live dot with a fading trail of the last
 120 fixes; panning detaches following and the crosshair button reattaches it.

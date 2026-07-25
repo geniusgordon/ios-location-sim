@@ -51,6 +51,10 @@ export interface MapViewProps {
   draftWaypoints: LatLon[]
   draftRoute: LatLon[]
   editing: boolean
+  /** What a map click does. In "route" mode a click over a waypoint dot removes
+   *  it and dots are draggable; in "location" mode every click (dot or not)
+   *  sets the location, and dots are inert. Driven by the active sidebar tab. */
+  mode: "route" | "location"
   onMapClick(point: LatLon): void
   onWaypointDrag(index: number, point: LatLon): void
   onWaypointClick(index: number): void
@@ -157,11 +161,14 @@ export default function MapView(props: MapViewProps) {
 
     m.on("click", (event) => {
       if (!handlers.current.editing) return
-      const hits = m.queryRenderedFeatures(event.point, { layers: ["waypoint-dots"] })
-      const hit = hits[0]
-      if (hit) {
-        handlers.current.onWaypointClick(Number(hit.properties?.index ?? 0))
-        return
+      // Location mode: every click sets the location, even over a waypoint dot.
+      if (handlers.current.mode === "route") {
+        const hits = m.queryRenderedFeatures(event.point, { layers: ["waypoint-dots"] })
+        const hit = hits[0]
+        if (hit) {
+          handlers.current.onWaypointClick(Number(hit.properties?.index ?? 0))
+          return
+        }
       }
       handlers.current.onMapClick(fromLngLat(event.lngLat))
     })
@@ -170,7 +177,7 @@ export default function MapView(props: MapViewProps) {
     // release to commit. Map panning is suppressed for the duration.
     let dragging: number | null = null
     m.on("mousedown", "waypoint-dots", (event) => {
-      if (!handlers.current.editing) return
+      if (!handlers.current.editing || handlers.current.mode !== "route") return
       event.preventDefault()
       dragging = Number(event.features?.[0]?.properties?.index ?? 0)
       m.getCanvas().style.cursor = "grabbing"

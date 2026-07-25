@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { PanelLeftOpen } from "lucide-react"
 import type { LatLon, Place, Preset } from "@/api/types"
 import { deletePlace, deletePreset, errorText, getPlaces, getPresets, pinLocation, stopWalk } from "@/api/client"
-import Dock from "@/components/Dock"
 import MapView from "@/components/MapView"
-import RouteLibrary from "@/components/RouteLibrary"
+import Sidebar, { type SidebarTab } from "@/components/Sidebar"
+import { Button } from "@/components/ui/button"
 import { useDeviceStatus } from "@/hooks/useDeviceStatus"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { useRoutePreview } from "@/hooks/useRoutePreview"
 import { useWalkStream, useWalkMeta } from "@/hooks/useWalkStream"
 import {
@@ -20,12 +22,16 @@ import {
   type DraftSettings,
 } from "@/lib/draft"
 import { deviceIndicator } from "@/lib/deviceIndicator"
-import { canStop, isRunning } from "@/state/walkReducer"
+import { canStop, isRunning, showsLiveDock } from "@/state/walkReducer"
 
 export default function App() {
   useWalkStream()
+  const isMobile = useIsMobile()
 
-  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [tab, setTab] = useState<SidebarTab>("walk")
+  // Open by default; collapsible. On mobile the sidebar overlays the map.
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+
   const [presets, setPresets] = useState<Preset[]>([])
   const [places, setPlaces] = useState<Place[]>([])
   // The last point the device was pinned at, from either pin path. Gates the
@@ -38,7 +44,6 @@ export default function App() {
 
   const [route, setRoute] = useState<DraftRoute>(emptyRoute)
   const [settings, setSettings] = useState<DraftSettings>(defaultSettings)
-  const [pinArmed, setPinArmed] = useState(false)
   const [pinError, setPinError] = useState<string | null>(null)
   const [placesLoading, setPlacesLoading] = useState(true)
   // Bumped on every typed/place set so MapView eases to the new point. A ref,
@@ -64,12 +69,11 @@ export default function App() {
   const handleClear = useCallback(async () => {
     await stopWalk()
     setLastPin(null)
-    setPinArmed(false)
   }, [])
-  // Keeps a finished/lost run's summary on screen after the dock would
-  // otherwise fall back to the drawing branch (the waypoints are still
-  // there). Dismissed by anything that means the user has moved on: editing
-  // the route, loading a saved one, or starting a new walk.
+
+  // Keeps a finished/lost run's summary on screen after the walk panel would
+  // otherwise fall back to the editor (the waypoints are still there).
+  // Dismissed by anything that means the user has moved on.
   const [showSummary, setShowSummary] = useState(false)
 
   // Only the newest load may write state. Two overlapping fetches (StrictMode
@@ -106,7 +110,7 @@ export default function App() {
     getPlaces()
       .then((data) => setPlaces(data.places))
       .catch(() => {
-        // A places failure is not worth blanking the sheet: /api/presets
+        // A places failure is not worth blanking the panel: /api/presets
         // already surfaces a broken config, and this call reads the same file.
       })
       .finally(() => setPlacesLoading(false))
@@ -116,15 +120,16 @@ export default function App() {
     reloadPlaces()
   }, [reloadPlaces])
 
-  // Re-read places whenever the library opens so a save from a prior open is
-  // reflected -- and so an early first open cannot show a stale empty list.
-  useEffect(() => {
-    if (libraryOpen) reloadPlaces()
-  }, [libraryOpen, reloadPlaces])
-
   const meta = useWalkMeta()
-  // Map-first: editable whenever no walk holds the device, library open or not.
+  // Map-first: editable whenever no walk holds the device.
   const editing = !isRunning(meta.state)
+
+  // A running walk (or a finished/lost run whose summary is still up) belongs on
+  // the Walk tab -- that is where the live view and Stop button live. Force it
+  // so the live view is never hidden behind the Set-location tab.
+  useEffect(() => {
+    if (showsLiveDock(meta.state, showSummary)) setTab("walk")
+  }, [meta.state, showSummary])
 
   // Paused while the service already holds the device: the walk state is the
   // truth then, and a probe would open a second tunnel.
@@ -141,9 +146,16 @@ export default function App() {
   // so a map-first route draws as a line rather than disconnected dots.
   const preview = useRoutePreview(route.waypoints, settings.costing, !offline && editing)
 
+  // Selecting a saved thing on mobile collapses the overlay so the result is
+  // visible on the map behind it; on desktop the inline sidebar leaves the map
+  // uncovered, so there is nothing to collapse.
+  const revealMap = useCallback(() => {
+    if (isMobile) setSidebarOpen(false)
+  }, [isMobile])
+
   const onMapClick = (point: LatLon) => {
-    if (pinArmed) {
-      // Stay armed: setting several locations in a row is the whole point.
+    if (tab === "location") {
+      // Stay on the tab: setting several locations in a row is the point.
       setShowSummary(false)
       setPinError(null)
       handlePinned(point) // pick: marker + fills save form (already on screen, no recenter)
@@ -158,12 +170,89 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-full w-full flex-col">
-      <div className="min-h-0 flex-1">
+    <div className="flex h-full w-full">
+      {sidebarOpen ? (
+        <Sidebar
+          tab={tab}
+          onTabChange={setTab}
+          onCollapse={() => setSidebarOpen(false)}
+          overlay={isMobile}
+          deviceIndicator={indicator}
+          locationDisabled={isRunning(meta.state)}
+          deviceConnected={indicator.connected}
+          lastPin={lastPin}
+          onPinned={handlePinned}
+          onPlaceSaved={reloadPlaces}
+          held={meta.state === "pinned"}
+          onClearPin={handleClear}
+          pinError={pinError}
+          places={places}
+          placesLoading={placesLoading}
+          onSelectPlace={(place) => {
+            const point: LatLon = [place.point[0], place.point[1]]
+            setPinError(null)
+            handlePinned(point, { recenter: true })
+            if (indicator.connected) {
+              void pinLocation(point[0], point[1]).catch((error: unknown) => setPinError(errorText(error)))
+            }
+            revealMap()
+          }}
+          onDeletePlace={async (name) => {
+            await deletePlace(name)
+            reloadPlaces()
+          }}
+          route={route}
+          settings={settings}
+          onSettingsChange={setSettings}
+          lengthM={preview.lengthM}
+          routePending={preview.pending}
+          routeError={preview.error}
+          loadError={loadError}
+          profiles={profiles}
+          offline={offline}
+          onRemoveLast={() => {
+            setShowSummary(false)
+            setRoute((r) => removeLast(r))
+          }}
+          onClear={() => {
+            setShowSummary(false)
+            setRoute(clearRoute())
+          }}
+          onSaved={(name) => {
+            setRoute((r) => ({ ...r, name }))
+            reloadPresets()
+          }}
+          onStarted={() => {
+            setShowSummary(false)
+          }}
+          showSummary={showSummary}
+          presets={presets}
+          loading={loading}
+          onReloadPresets={reloadPresets}
+          onSelectPreset={(preset) => {
+            const next = loadPreset(preset, settings)
+            setShowSummary(false)
+            setRoute(next.route)
+            setSettings(next.settings)
+            revealMap()
+          }}
+          onDeletePreset={async (name) => {
+            await deletePreset(name)
+            // Deleting the loaded route drops its name but keeps its geometry:
+            // starting by a name that no longer exists would 404 instead of
+            // walking. Same rule every edit already follows.
+            setRoute((r) => (r.name === name ? { ...r, name: null } : r))
+            reloadPresets()
+          }}
+        />
+      ) : null}
+
+      <div className="relative min-h-0 flex-1">
         <MapView
           draftWaypoints={route.waypoints}
           draftRoute={preview.route}
           editing={editing}
+          mode={tab === "location" ? "location" : "route"}
           centerOn={centerOn}
           pickedPoint={canStop(meta.state) ? null : lastPin}
           onMapClick={onMapClick}
@@ -176,86 +265,18 @@ export default function App() {
             setRoute((r) => removeWaypoint(r, index))
           }}
         />
+        {!sidebarOpen ? (
+          <Button
+            variant="secondary"
+            size="icon"
+            className="absolute left-3 top-3 z-10 shadow-md"
+            aria-label="Open sidebar"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <PanelLeftOpen className="size-4" />
+          </Button>
+        ) : null}
       </div>
-      <Dock
-        deviceIndicator={indicator}
-        deviceConnected={indicator.connected}
-        route={route}
-        settings={settings}
-        onSettingsChange={setSettings}
-        lengthM={preview.lengthM}
-        routePending={preview.pending}
-        routeError={preview.error}
-        loadError={loadError}
-        profiles={profiles}
-        offline={offline}
-        pinArmed={pinArmed}
-        onPinArmedChange={setPinArmed}
-        pinError={pinError}
-        lastPin={lastPin}
-        held={meta.state === "pinned"}
-        onPinned={handlePinned}
-        onClearPin={handleClear}
-        onPlaceSaved={reloadPlaces}
-        showSummary={showSummary}
-        onRemoveLast={() => {
-          setShowSummary(false)
-          setRoute((r) => removeLast(r))
-        }}
-        onClear={() => {
-          setShowSummary(false)
-          setRoute(clearRoute())
-        }}
-        onOpenLibrary={() => setLibraryOpen(true)}
-        onSaved={(name) => {
-          setRoute((r) => ({ ...r, name }))
-          reloadPresets()
-        }}
-        onStarted={() => {
-          setShowSummary(false)
-          setLibraryOpen(false)
-        }}
-      />
-      <RouteLibrary
-        open={libraryOpen}
-        onOpenChange={setLibraryOpen}
-        presets={presets}
-        places={places}
-        placesLoading={placesLoading}
-        selectedName={route.name}
-        loading={loading}
-        loadError={loadError}
-        onReload={reloadPresets}
-        onSelect={(preset) => {
-          const next = loadPreset(preset, settings)
-          setShowSummary(false)
-          setRoute(next.route)
-          setSettings(next.settings)
-          setLibraryOpen(false)
-        }}
-        onSelectPlace={(place) => {
-          const point: LatLon = [place.point[0], place.point[1]]
-          setPinArmed(false)
-          setPinError(null)
-          setLibraryOpen(false)
-          handlePinned(point, { recenter: true })
-          if (indicator.connected) {
-            void pinLocation(point[0], point[1]).catch((error: unknown) => setPinError(errorText(error)))
-          }
-        }}
-        onDeletePreset={async (name) => {
-          await deletePreset(name)
-          // Deleting the loaded route drops its name but keeps its geometry:
-          // starting by a name that no longer exists would 404 instead of
-          // walking. Same rule every edit already follows.
-          setRoute((r) => (r.name === name ? { ...r, name: null } : r))
-          reloadPresets()
-        }}
-        onDeletePlace={async (name) => {
-          await deletePlace(name)
-          reloadPlaces()
-        }}
-      />
     </div>
   )
 }
