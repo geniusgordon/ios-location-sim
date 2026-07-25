@@ -10,6 +10,11 @@ import type { DeviceIndicator } from "@/lib/deviceIndicator"
 
 export type SidebarTab = "location" | "walk"
 
+/** The selected-tab look, applied at the call site from the controlled value. */
+function activeTabClass(active: boolean): string {
+  return active ? "bg-background text-foreground shadow-sm" : ""
+}
+
 export interface SidebarProps {
   tab: SidebarTab
   onTabChange(tab: SidebarTab): void
@@ -81,9 +86,17 @@ export default function Sidebar(props: SidebarProps) {
         onValueChange={(value) => props.onTabChange(value as SidebarTab)}
         className="min-h-0 flex-1 gap-0"
       >
+        {/* The active-tab styling is applied here rather than in the ui/ tabs
+            primitive: the sidebar owns the controlled `tab` value, so it knows
+            which tab is active without depending on the primitive's internal
+            data attribute. */}
         <TabsList className="m-3 mb-0 w-auto">
-          <TabsTab value="location">Set location</TabsTab>
-          <TabsTab value="walk">Walk</TabsTab>
+          <TabsTab value="location" className={activeTabClass(props.tab === "location")}>
+            Set location
+          </TabsTab>
+          <TabsTab value="walk" className={activeTabClass(props.tab === "walk")}>
+            Walk
+          </TabsTab>
         </TabsList>
 
         <TabsPanel value="location" className="min-h-0 flex-1 overflow-hidden">

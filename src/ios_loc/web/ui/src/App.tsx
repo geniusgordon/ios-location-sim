@@ -28,7 +28,7 @@ export default function App() {
   useWalkStream()
   const isMobile = useIsMobile()
 
-  const [tab, setTab] = useState<SidebarTab>("walk")
+  const [tab, setTab] = useState<SidebarTab>("location")
   // Open by default; collapsible. On mobile the sidebar overlays the map.
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
