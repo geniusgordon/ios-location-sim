@@ -1,5 +1,6 @@
-import pytest
 from contextlib import asynccontextmanager
+
+import pytest
 
 from ios_loc.session import LocationSession, SessionLost
 
@@ -50,7 +51,7 @@ async def test_set_forwards_to_sim():
 
 async def test_reconnects_after_failure_and_retries_the_set():
     broken, good = FakeSim(fail_times=1), FakeSim()
-    slept, sleep = await collect_sleeps()
+    _slept, sleep = await collect_sleeps()
     session = LocationSession(opener_for([broken, good]), sleep=sleep)
     await session.start()
     await session.set(25.0, 121.0)
@@ -70,7 +71,7 @@ async def test_backoff_grows_then_caps():
 
 async def test_gives_up_after_max_attempts():
     sims = [FakeSim(fail_times=1) for _ in range(5)]
-    slept, sleep = await collect_sleeps()
+    _slept, sleep = await collect_sleeps()
     session = LocationSession(opener_for(sims), max_attempts=3, sleep=sleep)
     await session.start()
     with pytest.raises(SessionLost):
@@ -106,7 +107,7 @@ async def test_session_lost_preserves_the_real_error():
             raise OSError("tunneld gone away")
         yield sim
 
-    slept, sleep = await collect_sleeps()
+    _slept, sleep = await collect_sleeps()
     session = LocationSession(opener, max_attempts=4, sleep=sleep)
     await session.start()
     with pytest.raises(SessionLost) as exc_info:
@@ -198,7 +199,7 @@ async def test_start_retries_a_slow_tunnel():
             raise OSError("tunnel still coming up")
         yield sim
 
-    slept, sleep = await collect_sleeps()
+    _slept, sleep = await collect_sleeps()
     session = LocationSession(opener, sleep=sleep)
     await session.start()
     await session.set(25.0, 121.0)
@@ -245,7 +246,7 @@ async def test_start_reraises_the_original_error_when_device_absent():
         raise OSError("no device")
         yield  # pragma: no cover
 
-    slept, sleep = await collect_sleeps()
+    _slept, sleep = await collect_sleeps()
     session = LocationSession(opener, sleep=sleep)
     with pytest.raises(OSError, match="no device"):
         await session.start()

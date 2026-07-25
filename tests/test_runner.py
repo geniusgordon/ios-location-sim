@@ -1,6 +1,7 @@
 import random
-import pytest
 from contextlib import asynccontextmanager
+
+import pytest
 
 from ios_loc.path import Path
 from ios_loc.presets import DEFAULT_PACES
@@ -62,9 +63,7 @@ async def test_runs_for_the_requested_duration():
     sim = RecordingSim()
     session = make_session(sim, clock.sleep, clock=clock)
     await session.start()
-    stats = await run_walk(
-        make_walker(), session, duration_s=60.0, clock=clock, sleep=clock.sleep
-    )
+    stats = await run_walk(make_walker(), session, duration_s=60.0, clock=clock, sleep=clock.sleep)
     assert stats.ticks == 60
     assert len(sim.sets) == 60
 
@@ -93,9 +92,7 @@ async def test_walk_clock_freezes_during_an_outage():
     session = make_session(sim, clock.sleep, clock=clock)
     await session.start()
     walker = make_walker()
-    stats = await run_walk(
-        walker, session, duration_s=20.0, clock=clock, sleep=clock.sleep
-    )
+    stats = await run_walk(walker, session, duration_s=20.0, clock=clock, sleep=clock.sleep)
     assert session.reconnects == 1
     # 20 ticks requested; the walker advanced exactly once per tick, no extra.
     assert stats.ticks == 20
@@ -160,9 +157,7 @@ async def test_duration_is_honoured_while_the_device_is_down():
     await session.start()
     session._opener = opener
     session._sim = None
-    stats = await run_walk(
-        make_walker(), session, duration_s=60.0, clock=clock, sleep=clock.sleep
-    )
+    stats = await run_walk(make_walker(), session, duration_s=60.0, clock=clock, sleep=clock.sleep)
     assert clock.now < 10_000, "run did not stop at its deadline"
     assert stats.ticks >= 1
 
@@ -173,9 +168,7 @@ async def test_stops_when_a_non_looping_walker_finishes():
     session = make_session(sim, clock.sleep, clock=clock)
     await session.start()
     path = Path([(0.0, 0.0), (0.0005, 0.0)])  # ~55 m
-    walker = Walker(
-        path, DEFAULT_PACES["walk"], loop=False, rng=random.Random(0), scatter_m=0.0
-    )
+    walker = Walker(path, DEFAULT_PACES["walk"], loop=False, rng=random.Random(0), scatter_m=0.0)
     stats = await run_walk(walker, session, duration_s=None, clock=clock, sleep=clock.sleep)
     assert walker.finished
     assert stats.ticks < 120

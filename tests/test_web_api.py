@@ -121,7 +121,7 @@ def test_walk_is_idle_before_it_starts(context):
 
 
 def test_starting_a_walk_from_waypoints(context):
-    client, _, _, session = context
+    client, _, _, _ = context
     response = client.post(
         "/api/walk",
         json={"waypoints": [[25.0, 121.0], [25.1, 121.1]], "duration_s": 3},
@@ -364,7 +364,9 @@ def test_a_disconnected_socket_does_not_stop_the_walk(tmp_path):
         clock=clock,
         sleep=clock.sleep,
     )
-    app = create_app(service=service, route_client=route_client, config_path=tmp_path / "config.toml")
+    app = create_app(
+        service=service, route_client=route_client, config_path=tmp_path / "config.toml"
+    )
 
     with TestClient(app) as client:
         with client.websocket_connect("/ws") as socket:
@@ -417,22 +419,23 @@ def test_an_idle_departed_socket_is_cleaned_up_even_with_no_walk_running(tmp_pat
         clock=clock,
         sleep=clock.sleep,
     )
-    app = create_app(service=service, route_client=route_client, config_path=tmp_path / "config.toml")
+    app = create_app(
+        service=service, route_client=route_client, config_path=tmp_path / "config.toml"
+    )
 
-    with TestClient(app) as client:
-        with client.websocket_connect("/ws") as socket:
-            assert socket.receive_json()["type"] == "snapshot"
-            # No walk started -- idle, no broadcast traffic whatsoever. Just
-            # send a real disconnect, without tearing down the whole session.
-            socket.close()
+    with TestClient(app) as client, client.websocket_connect("/ws") as socket:
+        assert socket.receive_json()["type"] == "snapshot"
+        # No walk started -- idle, no broadcast traffic whatsoever. Just
+        # send a real disconnect, without tearing down the whole session.
+        socket.close()
 
-            deadline = time.monotonic() + 2.0
-            while service._subscribers and time.monotonic() < deadline:
-                time.sleep(0.01)
+        deadline = time.monotonic() + 2.0
+        while service._subscribers and time.monotonic() < deadline:
+            time.sleep(0.01)
 
-            assert service._subscribers == set(), (
-                "the handler must notice a departed idle client on its own"
-            )
+        assert service._subscribers == set(), (
+            "the handler must notice a departed idle client on its own"
+        )
 
 
 def test_a_real_websocketdisconnect_during_send_is_handled_and_cleans_up(tmp_path, monkeypatch):
@@ -447,7 +450,9 @@ def test_a_real_websocketdisconnect_during_send_is_handled_and_cleans_up(tmp_pat
         clock=clock,
         sleep=clock.sleep,
     )
-    app = create_app(service=service, route_client=route_client, config_path=tmp_path / "config.toml")
+    app = create_app(
+        service=service, route_client=route_client, config_path=tmp_path / "config.toml"
+    )
 
     original_send_json = StarletteWebSocket.send_json
     calls = {"n": 0}
@@ -494,9 +499,8 @@ def test_the_socket_still_resolves_when_a_static_dir_is_mounted(tmp_path):
     (static_dir / "index.html").write_text("<html>ui</html>")
 
     app = _make_app(tmp_path, static_dir=static_dir)
-    with TestClient(app) as client:
-        with client.websocket_connect("/ws") as socket:
-            message = socket.receive_json()
+    with TestClient(app) as client, client.websocket_connect("/ws") as socket:
+        message = socket.receive_json()
 
     assert message["type"] == "snapshot"
     assert message["status"]["state"] == "idle"
@@ -537,7 +541,7 @@ def test_a_present_bundle_is_a_real_build(tmp_path):
     if not (static / "index.html").exists():
         pytest.skip("frontend not built (run `pnpm build` in web/ui)")
     index = (static / "index.html").read_text(encoding="utf-8")
-    assert "<div id=\"root\">" in index, "static/index.html is not the built React app"
+    assert '<div id="root">' in index, "static/index.html is not the built React app"
     assert "/assets/" in index, "built index.html does not reference a hashed bundle"
 
     client = TestClient(_make_app(tmp_path, static_dir=static))
@@ -555,9 +559,7 @@ def _probe_returning(status: DeviceStatus):
 def test_device_status_reports_ok(tmp_path):
     app = _make_app(
         tmp_path,
-        device_probe=_probe_returning(
-            DeviceStatus(connected=True, reason="ok", detail="iOS 17.5")
-        ),
+        device_probe=_probe_returning(DeviceStatus(connected=True, reason="ok", detail="iOS 17.5")),
     )
     with TestClient(app) as client:
         resp = client.get("/api/device")

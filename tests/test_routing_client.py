@@ -1,4 +1,5 @@
 import pytest
+
 from ios_loc.routing import RouteNotCached, RoutingError, ValhallaClient
 
 WAYPOINTS = [(25.0330, 121.5654), (25.0380, 121.5680)]
@@ -9,7 +10,7 @@ FAKE_RESPONSE = {
     "trip": {
         "status": 0,
         "legs": [
-            {"shape": "{n{vn@qmwzfFDyFmFG"},   # (25.032958,121.565417) ... (25.033074,121.565546)
+            {"shape": "{n{vn@qmwzfFDyFmFG"},  # (25.032958,121.565417) ... (25.033074,121.565546)
             {"shape": "{n{vn@qmwzfFDyFmFG"},
         ],
     }
@@ -108,9 +109,9 @@ def test_different_base_url_is_a_different_cache_entry(tmp_path):
     # A local Valhalla container and the public server may return different routes;
     # they must not share a cache entry.
     p1, p2 = FakePoster(), FakePoster()
-    ValhallaClient(base_url="https://valhalla1.openstreetmap.de", cache_dir=tmp_path, poster=p1).route(
-        WAYPOINTS, costing="pedestrian"
-    )
+    ValhallaClient(
+        base_url="https://valhalla1.openstreetmap.de", cache_dir=tmp_path, poster=p1
+    ).route(WAYPOINTS, costing="pedestrian")
     ValhallaClient(base_url="http://localhost:8002", cache_dir=tmp_path, poster=p2).route(
         WAYPOINTS, costing="pedestrian"
     )

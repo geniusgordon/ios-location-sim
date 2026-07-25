@@ -36,9 +36,9 @@ class Pace:
     """
 
     name: str
-    speed: float           # base speed, m/s
-    jitter: float          # relative sigma applied per tick
-    pause_per_min: float   # probability of starting a pause, per minute
+    speed: float  # base speed, m/s
+    jitter: float  # relative sigma applied per tick
+    pause_per_min: float  # probability of starting a pause, per minute
     pause_min_s: float
     pause_max_s: float
 
@@ -153,8 +153,7 @@ def _parse_point(raw: object, place_name: str) -> Coord:
     """Validate a place's single point, naming the place in every error."""
     if not isinstance(raw, (list, tuple)) or len(raw) != 2:
         raise ConfigError(
-            f"place {place_name!r}: 'point' must be a [latitude, longitude] pair, "
-            f"got {raw!r}"
+            f"place {place_name!r}: 'point' must be a [latitude, longitude] pair, got {raw!r}"
         )
     try:
         lat, lon = float(raw[0]), float(raw[1])
@@ -475,8 +474,7 @@ def delete_preset(path: pathlib.Path | None, name: str) -> None:
 def _place_tables(places: dict[str, Place]) -> dict[str, dict]:
     """The TOML shape of a place collection, name-sorted for a stable file."""
     return {
-        name: {"point": [item.point[0], item.point[1]]}
-        for name, item in sorted(places.items())
+        name: {"point": [item.point[0], item.point[1]]} for name, item in sorted(places.items())
     }
 
 

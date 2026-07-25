@@ -31,7 +31,7 @@ class FixOut(BaseModel):
     paused: bool
 
     @classmethod
-    def from_fix(cls, fix: Fix) -> "FixOut":
+    def from_fix(cls, fix: Fix) -> FixOut:
         return cls(
             elapsed_s=fix.elapsed_s,
             lat=fix.lat,
@@ -50,7 +50,7 @@ class StatsOut(BaseModel):
     ticks: int
 
     @classmethod
-    def from_stats(cls, stats: WalkStats) -> "StatsOut":
+    def from_stats(cls, stats: WalkStats) -> StatsOut:
         return cls(
             elapsed_s=stats.elapsed_s,
             distance_m=stats.distance_m,
@@ -68,7 +68,7 @@ class PresetOut(BaseModel):
     costing: str
 
     @classmethod
-    def from_preset(cls, preset: Preset) -> "PresetOut":
+    def from_preset(cls, preset: Preset) -> PresetOut:
         return cls(
             name=preset.name,
             waypoints=[[lat, lon] for lat, lon in preset.waypoints],
@@ -87,7 +87,7 @@ class PaceOut(BaseModel):
     speed_mps: float
 
     @classmethod
-    def from_pace(cls, pace: Pace) -> "PaceOut":
+    def from_pace(cls, pace: Pace) -> PaceOut:
         return cls(name=pace.name, speed_mps=pace.speed)
 
 
@@ -110,7 +110,7 @@ class PlaceOut(BaseModel):
     point: list[float]
 
     @classmethod
-    def from_place(cls, place: Place) -> "PlaceOut":
+    def from_place(cls, place: Place) -> PlaceOut:
         return cls(name=place.name, point=[place.point[0], place.point[1]])
 
 

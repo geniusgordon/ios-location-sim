@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -167,10 +168,8 @@ class ValhallaClient:
         except OSError as exc:
             logger.warning("could not cache route to %s: %s", cache_file, exc)
             if tmp is not None:
-                try:
+                with contextlib.suppress(OSError):
                     pathlib.Path(tmp).unlink(missing_ok=True)
-                except OSError:
-                    pass
         except BaseException:
             if tmp is not None:
                 pathlib.Path(tmp).unlink(missing_ok=True)

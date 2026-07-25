@@ -8,6 +8,7 @@ from ios_loc.web.models import WalkState, WalkStatus
 from ios_loc.web.service import StartSpec, WalkAlreadyRunning, WalkService
 from tests.conftest import SQUARE, FakeRouteClient, FakeSession, VirtualClock
 
+
 def make_service(session=None, route_client=None, **kwargs):
     """Build a service on virtual time unless the caller overrides clock/sleep."""
     session = session or FakeSession()
@@ -216,9 +217,7 @@ async def test_stop_racing_a_slow_connecting_start_leaves_a_consistent_state():
         assert session.stop_calls == 1, "the session must be stopped exactly once"
 
         orphans = {
-            t
-            for t in asyncio.all_tasks() - tasks_before - {asyncio.current_task()}
-            if not t.done()
+            t for t in asyncio.all_tasks() - tasks_before - {asyncio.current_task()} if not t.done()
         }
         assert not orphans, "a drive loop survived stop() with no way to reach it"
     finally:

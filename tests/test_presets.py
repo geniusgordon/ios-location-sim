@@ -1,4 +1,5 @@
 import pytest
+
 from ios_loc.presets import (
     DEFAULT_PACES,
     MAX_SPEED_MPS,
@@ -9,8 +10,8 @@ from ios_loc.presets import (
 
 
 def test_ceiling_is_20_kmh():
-    assert MAX_SPEED_MPS == pytest.approx(5.56, abs=0.01)
-    assert MAX_SPEED_MPS * 3.6 == pytest.approx(20.0, abs=0.05)
+    assert pytest.approx(5.56, abs=0.01) == MAX_SPEED_MPS
+    assert pytest.approx(20.0, abs=0.05) == MAX_SPEED_MPS * 3.6
 
 
 def test_builtin_paces_exist_and_are_under_the_ceiling():
@@ -74,16 +75,14 @@ loop = true
 
 def test_config_pace_over_ceiling_is_rejected(tmp_path):
     cfg = tmp_path / "config.toml"
-    cfg.write_text('[paces.fast]\nspeed = 12.0\n')
+    cfg.write_text("[paces.fast]\nspeed = 12.0\n")
     with pytest.raises(ValueError):
         load_config(cfg)
 
 
 def test_preset_referencing_unknown_pace_is_rejected(tmp_path):
     cfg = tmp_path / "config.toml"
-    cfg.write_text(
-        '[presets.x]\nwaypoints = [[25.0, 121.0], [25.1, 121.1]]\npace = "typoo"\n'
-    )
+    cfg.write_text('[presets.x]\nwaypoints = [[25.0, 121.0], [25.1, 121.1]]\npace = "typoo"\n')
     with pytest.raises(ConfigError, match="unknown pace"):
         load_config(cfg)
 
@@ -91,7 +90,7 @@ def test_preset_referencing_unknown_pace_is_rejected(tmp_path):
 def test_preset_can_reference_a_pace_defined_in_the_same_file(tmp_path):
     cfg = tmp_path / "config.toml"
     cfg.write_text(
-        '[paces.jog]\nspeed = 2.6\n\n'
+        "[paces.jog]\nspeed = 2.6\n\n"
         '[presets.x]\nwaypoints = [[25.0, 121.0], [25.1, 121.1]]\npace = "jog"\n'
     )
     _paces, presets = load_config(cfg)
@@ -136,22 +135,34 @@ def test_non_numeric_speed_names_the_pace(tmp_path):
 def test_inverted_pause_range_is_rejected():
     with pytest.raises(ValueError, match="pause_min_s"):
         Pace(
-            name="bad", speed=1.3, jitter=0.08, pause_per_min=0.1,
-            pause_min_s=30, pause_max_s=5,
+            name="bad",
+            speed=1.3,
+            jitter=0.08,
+            pause_per_min=0.1,
+            pause_min_s=30,
+            pause_max_s=5,
         )
 
 
 def test_negative_jitter_is_rejected():
     with pytest.raises(ValueError, match="jitter"):
         Pace(
-            name="bad", speed=1.3, jitter=-0.5, pause_per_min=0.1,
-            pause_min_s=5, pause_max_s=30,
+            name="bad",
+            speed=1.3,
+            jitter=-0.5,
+            pause_per_min=0.1,
+            pause_min_s=5,
+            pause_max_s=30,
         )
 
 
 def test_negative_pause_per_min_is_rejected():
     with pytest.raises(ValueError, match="pause_per_min"):
         Pace(
-            name="bad", speed=1.3, jitter=0.08, pause_per_min=-1.0,
-            pause_min_s=5, pause_max_s=30,
+            name="bad",
+            speed=1.3,
+            jitter=0.08,
+            pause_per_min=-1.0,
+            pause_min_s=5,
+            pause_max_s=30,
         )

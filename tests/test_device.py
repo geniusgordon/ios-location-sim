@@ -1,7 +1,5 @@
 """Unit tests for the web-layer device-connectivity probe."""
 
-import pytest
-
 from ios_loc.discovery import NoDeviceFound, TunneldNotRunning
 from ios_loc.web.device import probe_device
 from ios_loc.web.models import DeviceStatus

@@ -1,5 +1,3 @@
-import pathlib
-
 import pytest
 
 from ios_loc.presets import (
@@ -103,8 +101,8 @@ def test_multiline_array_with_no_trailing_comma_on_last_element_is_not_mistaken_
     path = tmp_path / "config.toml"
     path.write_text(
         "[paces.jog]\n"
-        'speed = 2.6\n'
-        'jitter = 0.1\n'
+        "speed = 2.6\n"
+        "jitter = 0.1\n"
         "\n"
         "[presets.old]\n"
         "waypoints = [\n"
@@ -129,14 +127,14 @@ def test_a_quoted_key_containing_a_bracket_does_not_truncate_the_header_match(tm
     path.write_text('[paces."my]pace"]\nspeed = 1.5\n')
 
     paces, _ = load_config(path)
-    assert paces['my]pace'].speed == 1.5
+    assert paces["my]pace"].speed == 1.5
 
     save_preset(path, Preset(name="new", waypoints=[(1.0, 2.0), (3.0, 4.0)]))
 
     text = path.read_text()
     assert '[paces."my]pace"]' in text
     paces, presets = load_config(path)
-    assert paces['my]pace'].speed == 1.5
+    assert paces["my]pace"].speed == 1.5
     assert set(presets) == {"new"}
 
 
@@ -146,7 +144,7 @@ def test_crlf_line_endings_round_trip(tmp_path):
         b"# a windows-authored config\r\n"
         b"[paces.jog]\r\n"
         b"speed = 2.6  # trailing comment\r\n"
-        b'jitter = 0.1\r\n'
+        b"jitter = 0.1\r\n"
         b"\r\n"
         b"[presets.old]\r\n"
         b"waypoints = [[25.0, 121.0], [25.1, 121.1]]\r\n"
@@ -232,11 +230,7 @@ def test_save_preset_cannot_repair_existing_invalid_config_with_unknown_pace_ref
     """
     path = tmp_path / "config.toml"
     # Create a config with a preset that references a pace we'll delete
-    path.write_text(
-        "[presets.old]\n"
-        "waypoints = [[25.0, 121.0], [25.1, 121.1]]\n"
-        'pace = "jog"\n'
-    )
+    path.write_text('[presets.old]\nwaypoints = [[25.0, 121.0], [25.1, 121.1]]\npace = "jog"\n')
     broken_bytes = path.read_bytes()
 
     # Now try to save a valid new preset. This should fail because load_config

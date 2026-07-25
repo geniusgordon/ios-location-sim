@@ -75,7 +75,7 @@ def test_gui_refuses_to_serve_when_the_bundle_is_missing(monkeypatch, tmp_path):
 
 
 def test_the_default_static_dir_points_inside_the_package():
-    assert cli.DEFAULT_STATIC_DIR == pathlib.Path(cli.__file__).parent / "web" / "static"
+    assert pathlib.Path(cli.__file__).parent / "web" / "static" == cli.DEFAULT_STATIC_DIR
 
 
 def test_gui_command_opens_browser_by_default(monkeypatch, tmp_path, built_assets):
@@ -89,9 +89,7 @@ def test_gui_command_opens_browser_by_default(monkeypatch, tmp_path, built_asset
     monkeypatch.setattr(cli.uvicorn, "run", fake_run)
     monkeypatch.setattr(cli.webbrowser, "open", lambda url: calls.setdefault("opened", url))
 
-    result = runner.invoke(
-        cli.app, ["gui", "--port", "8765", "--config", str(tmp_path / "c.toml")]
-    )
+    result = runner.invoke(cli.app, ["gui", "--port", "8765", "--config", str(tmp_path / "c.toml")])
     assert result.exit_code == 0, result.output
     assert calls["opened"] == "http://127.0.0.1:8765"
 

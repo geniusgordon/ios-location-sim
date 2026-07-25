@@ -16,9 +16,9 @@ import uvicorn
 from ios_loc.discovery import DiscoveryError, find_device, open_simulation
 from ios_loc.path import Coord
 from ios_loc.presets import (
-    ConfigError,
     NEEDS_PRESET_OR_WAYPOINTS,
     NEEDS_TWO_WAYPOINTS,
+    ConfigError,
     _check_coord_range,
     load_config,
     resolve_walk,
@@ -307,8 +307,7 @@ def walk(
         _fail(f"FAILED: {exc}")
     except Exception as exc:
         _fail(
-            f"FAILED: {exc}\n"
-            "Check the device is unlocked, trusted, and has Developer Mode enabled."
+            f"FAILED: {exc}\nCheck the device is unlocked, trusted, and has Developer Mode enabled."
         )
 
 
@@ -368,7 +367,9 @@ def build_gui_app(
 
 @app.command()
 def gui(
-    host: str = typer.Option("127.0.0.1", help="Bind address. Leave as loopback unless you mean it."),
+    host: str = typer.Option(
+        "127.0.0.1", help="Bind address. Leave as loopback unless you mean it."
+    ),
     port: int = typer.Option(8765, help="Port to serve on."),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open a browser on start."),
     offline: bool = typer.Option(False, "--offline", help="Fail routing that is not cached."),

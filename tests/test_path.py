@@ -1,5 +1,5 @@
-import math
 import pytest
+
 from ios_loc.path import Path, haversine_m
 
 

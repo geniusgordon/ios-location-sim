@@ -1,5 +1,8 @@
+import itertools
 import random
+
 import pytest
+
 from ios_loc.path import Path, haversine_m
 from ios_loc.presets import DEFAULT_PACES, MAX_SPEED_MPS, Pace
 from ios_loc.walker import Walker
@@ -170,7 +173,7 @@ def test_open_path_loop_retraces_instead_of_teleporting():
     peak = lats.index(max(lats))
     assert max(lats) > 0.0009, "should reach the far end of the route"
     assert min(lats[peak:]) < 0.0005, "should retrace back toward the start"
-    for a, b in zip(lats, lats[1:]):
+    for a, b in itertools.pairwise(lats):
         assert abs(b - a) < 0.0001, "no positional jump at the turnaround"
 
 
@@ -185,7 +188,7 @@ def test_closed_loop_wraps_by_modulo_not_bounce():
         folded.append(w.distance_m % path.length_m)
     # Modulo wrapping steps backwards exactly once per lap; a bounce would step
     # backwards for half of every cycle.
-    decreases = sum(1 for a, b in zip(folded, folded[1:]) if b < a)
+    decreases = sum(1 for a, b in itertools.pairwise(folded) if b < a)
     assert decreases <= w.laps + 1, "position reversed - looks like bounce, not modulo"
     assert w.laps >= 1
 

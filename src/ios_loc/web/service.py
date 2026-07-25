@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import contextlib
 import logging
 import random
 import time
@@ -150,9 +151,7 @@ class WalkService:
         run = self._run
         if run is None:
             if self._pin_fix is not None:
-                return WalkStatus(
-                    state=self._state, error=self._error, fix=self._pin_fix
-                )
+                return WalkStatus(state=self._state, error=self._error, fix=self._pin_fix)
             return WalkStatus(state=self._effective_state(), error=self._error)
         return WalkStatus(
             state=self._effective_state(),
@@ -219,9 +218,7 @@ class WalkService:
                 self._run = None
                 self._state = WalkState.IDLE
                 self._error = f"{type(exc).__name__}: {exc}"
-                self._broadcast(
-                    {"type": "state", "state": self._state.value, "error": self._error}
-                )
+                self._broadcast({"type": "state", "state": self._state.value, "error": self._error})
                 raise
             self._broadcast({"type": "state", "state": self._state.value, "error": None})
             return self.status()
@@ -242,9 +239,7 @@ class WalkService:
                     session = self._session_factory()
                     await session.start()
                     self._pin_session = session
-                await self._pin_session.set(
-                    lat, lon, deadline=self._clock() + self._pin_timeout_s
-                )
+                await self._pin_session.set(lat, lon, deadline=self._clock() + self._pin_timeout_s)
             except BaseException as exc:
                 # A half-open session must not leak. Clear the device, drop the
                 # session, record the failure, and let the original exception
@@ -261,9 +256,7 @@ class WalkService:
                 self._pin_fix = None
                 self._state = WalkState.IDLE
                 self._error = f"{type(exc).__name__}: {exc}"
-                self._broadcast(
-                    {"type": "state", "state": self._state.value, "error": self._error}
-                )
+                self._broadcast({"type": "state", "state": self._state.value, "error": self._error})
                 raise
             self._pin_fix = FixOut(
                 elapsed_s=0.0, lat=lat, lon=lon, distance_m=0.0, speed_mps=0.0, paused=False
@@ -309,9 +302,7 @@ class WalkService:
                     await session.stop(clear=True)
                 except Exception as exc:  # noqa: BLE001 — teardown must not raise
                     logger.warning("could not stop the pin session cleanly: %s", exc)
-                self._broadcast(
-                    {"type": "state", "state": self._state.value, "error": None}
-                )
+                self._broadcast({"type": "state", "state": self._state.value, "error": None})
                 return
             run = self._run
             if run is None:
@@ -321,9 +312,7 @@ class WalkService:
                 if self._error is not None:
                     self._state = WalkState.IDLE
                     self._error = None
-                    self._broadcast(
-                        {"type": "state", "state": self._state.value, "error": None}
-                    )
+                    self._broadcast({"type": "state", "state": self._state.value, "error": None})
                 return
             task = run.task
             # Publish the "stopped" state before awaiting anything further, so
@@ -336,12 +325,10 @@ class WalkService:
                 run.watchdog.cancel()
             if task is not None:
                 task.cancel()
-                try:
+                # CancelledError is expected: we just cancelled the task above.
+                # The cancellation is self-inflicted and is the normal shutdown path.
+                with contextlib.suppress(asyncio.CancelledError):
                     await task
-                except asyncio.CancelledError:
-                    # CancelledError is expected: we just cancelled the task above.
-                    # The cancellation is self-inflicted and is the normal shutdown path.
-                    pass
             await self._teardown(run)
             self._broadcast({"type": "state", "state": self._state.value, "error": None})
 
@@ -452,9 +439,7 @@ class WalkService:
                 current = self._effective_state()
                 if current is not last:
                     last = current
-                    self._broadcast(
-                        {"type": "state", "state": current.value, "error": self._error}
-                    )
+                    self._broadcast({"type": "state", "state": current.value, "error": self._error})
         except asyncio.CancelledError:
             raise
 
@@ -505,10 +490,8 @@ class WalkService:
         full. A stalled browser tab must never slow the tick loop."""
         for queue in self._subscribers:
             if queue.full():
-                try:
+                with contextlib.suppress(asyncio.QueueEmpty):
                     queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    pass
             try:
                 queue.put_nowait(message)
             except asyncio.QueueFull:  # pragma: no cover — defensive

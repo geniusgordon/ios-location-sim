@@ -6,6 +6,8 @@ models, so the mapping lives here instead of there.
 
 from __future__ import annotations
 
+import contextlib
+
 from ios_loc.discovery import NoDeviceFound, TunneldNotRunning
 from ios_loc.session import _PROGRAMMING_ERRORS
 from ios_loc.web.models import DeviceStatus
@@ -30,13 +32,10 @@ async def probe_device(find_device, udid: str | None = None) -> DeviceStatus:
     except _PROGRAMMING_ERRORS:
         raise
     except Exception as exc:  # noqa: BLE001 — reported as a status, not raised
-        return DeviceStatus(
-            connected=False, reason="error", detail=f"{type(exc).__name__}: {exc}"
-        )
+        return DeviceStatus(connected=False, reason="error", detail=f"{type(exc).__name__}: {exc}")
 
     detail = f"iOS {rsd.product_version}"
-    try:
+    # A close failure must not flip the result.
+    with contextlib.suppress(Exception):
         await rsd.close()
-    except Exception:  # noqa: BLE001 — a close failure must not flip the result
-        pass
     return DeviceStatus(connected=True, reason="ok", detail=detail)

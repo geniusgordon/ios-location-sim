@@ -50,9 +50,7 @@ class FrontendBuildHook(BuildHookInterface):
         subprocess.run([pnpm, "build"], cwd=ui, check=True)
 
         if not (root / STATIC_DIR / "index.html").exists():
-            raise RuntimeError(
-                f"`pnpm build` finished but {STATIC_DIR}/index.html is missing."
-            )
+            raise RuntimeError(f"`pnpm build` finished but {STATIC_DIR}/index.html is missing.")
 
         # `web/static/` is gitignored; without this hatchling excludes it.
         build_data.setdefault("artifacts", []).append(f"/{STATIC_DIR.as_posix()}/**")

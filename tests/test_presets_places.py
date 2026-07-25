@@ -26,7 +26,7 @@ def test_loading_places_reads_every_table(tmp_path):
 
 def test_a_config_with_no_places_table_loads_as_empty(tmp_path):
     path = tmp_path / "config.toml"
-    path.write_text('[presets.a]\nwaypoints = [[1.0, 2.0], [3.0, 4.0]]\n')
+    path.write_text("[presets.a]\nwaypoints = [[1.0, 2.0], [3.0, 4.0]]\n")
     assert load_places(path) == {}
 
 
@@ -39,7 +39,7 @@ def test_a_place_missing_its_point_is_a_config_error(tmp_path):
 
 @pytest.mark.parametrize(
     "raw",
-    ['point = [25.0]', 'point = "here"', 'point = [25.0, "x"]'],
+    ["point = [25.0]", 'point = "here"', 'point = [25.0, "x"]'],
 )
 def test_a_malformed_point_is_a_config_error(tmp_path, raw):
     path = tmp_path / "config.toml"

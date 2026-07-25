@@ -20,6 +20,7 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=0.24",
     "pytest-timeout>=2.4.0",
+    "ruff>=0.14",
 ]
 
 [build-system]
@@ -33,6 +34,54 @@ packages = ["src/ios_loc"]
 # editable installs, so `uv sync` needs no Node. See hatch_build.py.
 [tool.hatch.build.targets.wheel.hooks.custom]
 path = "hatch_build.py"
+
+[tool.ruff]
+target-version = "py313"
+extend-exclude = ["src/ios_loc/web/ui"]
+# 100, not the default 88: this codebase predates any formatter and its own p99
+# line is 91 chars. Picking 88 would mean rewrapping ~100 lines of deliberately
+# formatted, invariant-heavy code for no reader's benefit.
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # import sorting
+    "UP",       # pyupgrade
+    "B",        # bugbear
+    "SIM",      # simplify
+    "BLE",      # blind-except
+    "RUF",      # ruff-specific
+]
+ignore = [
+    # Several deliberate `# noqa: BLE001` comments carry the *reason* the broad
+    # except is correct. This config does not need all of them, but they are
+    # documentation worth more than the rule that flags them as redundant.
+    "RUF100",
+    # `zip(strict=True)` raises on a length mismatch. Adding it to the polyline
+    # and waypoint zips would change runtime behaviour in the geometry layer,
+    # which is not a lint's call to make.
+    "B905",
+    # `class X(str, Enum)` -> `StrEnum` changes how members stringify, and these
+    # enums cross the wire into the OpenAPI schema the frontend types from.
+    "UP042",
+]
+
+# BLE001 is enabled because the code already annotates every deliberate broad
+# `except Exception` with `# noqa: BLE001` and a reason -- so a *new*, unjustified
+# one stands out. The two modules whose job is to absorb anything are exempt.
+
+[tool.ruff.lint.per-file-ignores]
+# `session.py` is by design "the only module that can fail because of hardware"
+# (see CLAUDE.md), and `cli.py` turns any failure into an exit code and a
+# message. Catching broadly is the contract in both, not an oversight.
+"src/ios_loc/session.py" = ["BLE001"]
+"src/ios_loc/cli.py" = ["BLE001", "B008"]
+# Typer and FastAPI declare parameters as call-valued defaults --
+# `typer.Option(...)` / `Depends(...)`. That is the framework's API, not a
+# mutable-default bug.
+"src/ios_loc/web/api.py" = ["B008"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
+from ios_loc.discovery import find_device
 from ios_loc.presets import (
     ConfigError,
     Place,
@@ -23,7 +24,6 @@ from ios_loc.presets import (
     save_place,
     save_preset,
 )
-from ios_loc.discovery import find_device
 from ios_loc.routing import RoutingError
 from ios_loc.session import _PROGRAMMING_ERRORS
 from ios_loc.web.device import probe_device
@@ -62,6 +62,7 @@ def create_app(
         # was given on the command line.
         async def device_probe() -> DeviceStatus:
             return await probe_device(find_device)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         try:
@@ -92,8 +93,9 @@ def create_app(
     @app.get("/api/presets", response_model=PresetsListOut)
     def list_presets() -> PresetsListOut:
         paces, presets = _config()
+        by_name = sorted(presets.values(), key=lambda p: p.name)
         return PresetsListOut(
-            presets=[PresetOut.from_preset(p) for p in sorted(presets.values(), key=lambda p: p.name)],
+            presets=[PresetOut.from_preset(p) for p in by_name],
             paces=[PaceOut.from_pace(paces[name]) for name in sorted(paces)],
             offline=offline,
         )

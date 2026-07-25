@@ -62,12 +62,8 @@ def test_walk_rejects_no_arguments():
 
 def test_walk_rejects_preset_and_via_together(tmp_path):
     cfg = tmp_path / "config.toml"
-    cfg.write_text(
-        '[presets.home]\nwaypoints = [[25.0, 121.0], [25.1, 121.1]]\n'
-    )
-    result = runner.invoke(
-        app, ["walk", "home", "--via", "25.0,121.0", "--config", str(cfg)]
-    )
+    cfg.write_text("[presets.home]\nwaypoints = [[25.0, 121.0], [25.1, 121.1]]\n")
+    result = runner.invoke(app, ["walk", "home", "--via", "25.0,121.0", "--config", str(cfg)])
     assert result.exit_code != 0
     assert result.stdout.strip() == "pass either a preset name or --via waypoints, not both"
 
@@ -77,12 +73,8 @@ def test_walk_rejects_preset_and_via_together_even_when_via_is_malformed(tmp_pat
     # even when the (irrelevant, since it will be rejected anyway) --via value
     # is not a parseable waypoint. Pins the check-before-parse ordering.
     cfg = tmp_path / "config.toml"
-    cfg.write_text(
-        '[presets.home]\nwaypoints = [[25.0, 121.0], [25.1, 121.1]]\n'
-    )
-    result = runner.invoke(
-        app, ["walk", "home", "--via", "garbage", "--config", str(cfg)]
-    )
+    cfg.write_text("[presets.home]\nwaypoints = [[25.0, 121.0], [25.1, 121.1]]\n")
+    result = runner.invoke(app, ["walk", "home", "--via", "garbage", "--config", str(cfg)])
     assert result.exit_code != 0
     assert result.stdout.strip() == "pass either a preset name or --via waypoints, not both"
 
@@ -102,9 +94,12 @@ def test_bad_log_path_reports_cleanly(tmp_path):
         app,
         [
             "walk",
-            "--via", "25.033,121.565",
-            "--via", "25.038,121.568",
-            "--log", str(blocker / "sub" / "run.log"),
+            "--via",
+            "25.033,121.565",
+            "--via",
+            "25.038,121.568",
+            "--log",
+            str(blocker / "sub" / "run.log"),
         ],
     )
     assert result.exit_code != 0
