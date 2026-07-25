@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { MapPin, Play, RefreshCw, Save, Square, Trash2, Undo2 } from "lucide-react"
+import { Check, MapPin, Play, RefreshCw, Save, Square, Trash2, Undo2 } from "lucide-react"
 import type { Pace, Preset, WalkStateName } from "@/api/types"
 import { errorText, savePreset, startWalk, stopWalk } from "@/api/client"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -57,6 +57,16 @@ function chipLabel(state: WalkStateName, paused: boolean): string {
   return state === "walking" && paused ? "paused" : LABEL[state]
 }
 
+/**
+ * The heading over a summary. The badge alone reads as a live panel that has
+ * stalled; a title says the run is over and the numbers are final.
+ */
+function summaryTitle(state: WalkStateName): string {
+  if (state === "error") return "Device lost"
+  if (state === "finished") return "Walk finished"
+  return "Walk ended"
+}
+
 function Stat(props: { label: string; value: string }) {
   return (
     <div className="flex flex-col leading-tight">
@@ -71,40 +81,81 @@ function Stat(props: { label: string; value: string }) {
  * and nothing else -- it is a leaf inside the sidebar, so a 1 Hz fix never
  * reaches the map (a sibling of the sidebar) or any editor control.
  */
-function LiveWalkPanel() {
+function LiveWalkPanel(props: {
+  /** Drop the summary and go back to the editor. */
+  onDismiss(): void
+  /** Re-run the same route; null when the draft is no longer startable. */
+  onRestart: (() => Promise<void>) | null
+}) {
   const { fix, stats, state } = useWalkTelemetry()
   const meta = useWalkMeta()
-  const [stopping, setStopping] = useState(false)
-  const [stopError, setStopError] = useState<string | null>(null)
+  // Which footer action is in flight, so the spinner lands on the button that
+  // was actually clicked rather than on both.
+  const [busy, setBusy] = useState<"stop" | "done" | "restart" | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
-  const onStop = async () => {
-    setStopping(true)
-    setStopError(null)
+  // The device is held -> Stop. The run is over and the session is already
+  // torn down -> there is nothing to stop, so the footer must offer a way out
+  // instead. A disabled Stop as the panel's only control is a dead end.
+  const held = canStop(state)
+
+  const run = async (which: "stop" | "done" | "restart", action: () => Promise<unknown>) => {
+    setBusy(which)
+    setActionError(null)
     try {
-      await stopWalk()
+      await action()
     } catch (error) {
-      setStopError(errorText(error))
+      setActionError(errorText(error))
     } finally {
-      setStopping(false)
+      setBusy(null)
     }
   }
+
+  const onStop = () => run("stop", () => stopWalk())
+
+  const onDone = () =>
+    run("done", async () => {
+      // Not just a local dismiss: the service keeps reporting `finished` with
+      // this run's route and trail until something clears it, so a reload
+      // would resurrect the summary. DELETE returns it to idle.
+      await stopWalk()
+      props.onDismiss()
+    })
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-col gap-4 p-4">
-        <div className="flex items-center gap-2">
-          <Badge variant={tone(state)}>{chipLabel(state, fix?.paused ?? false)}</Badge>
-          {meta.preset_name ? (
-            <span className="min-w-0 truncate text-sm font-medium" title={meta.preset_name}>
-              {meta.preset_name}
-            </span>
-          ) : null}
-        </div>
+        {/* Live: the badge is the state. Terminal: the title says it in words,
+            so the badge would only repeat itself ("Device lost" / "device
+            lost") -- the route's name is the useful thing to keep beside it. */}
+        {held ? (
+          <div className="flex items-center gap-2">
+            <Badge variant={tone(state)}>{chipLabel(state, fix?.paused ?? false)}</Badge>
+            {meta.preset_name ? (
+              <span className="min-w-0 truncate text-sm font-medium" title={meta.preset_name}>
+                {meta.preset_name}
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex min-w-0 flex-col">
+            <h3 className={`text-sm font-semibold ${state === "error" ? "text-destructive" : ""}`}>
+              {summaryTitle(state)}
+            </h3>
+            {meta.preset_name ? (
+              <span className="text-muted-foreground truncate text-xs" title={meta.preset_name}>
+                {meta.preset_name}
+              </span>
+            ) : null}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-x-4 gap-y-3">
           <Stat label="elapsed" value={formatDuration(stats?.elapsed_s ?? 0)} />
           <Stat label="distance" value={formatDistance(stats?.distance_m ?? 0)} />
-          <Stat label="speed" value={formatSpeed(fix?.speed_mps ?? 0)} />
+          {/* Live only: `speed` comes from the last fix, so on a finished run
+              it is a frozen instantaneous reading that looks like a hang. */}
+          {held ? <Stat label="speed" value={formatSpeed(fix?.speed_mps ?? 0)} /> : null}
           <Stat label="laps" value={String(stats?.laps ?? 0)} />
           <Stat label="reconnects" value={String(stats?.reconnects ?? 0)} />
         </div>
@@ -115,16 +166,39 @@ function LiveWalkPanel() {
             {meta.error}
           </p>
         ) : null}
-        {stopError ? <p className="text-destructive text-xs">{stopError}</p> : null}
+        {actionError ? <p className="text-destructive text-xs">{actionError}</p> : null}
 
-        <Button
-          variant="destructive"
-          className="w-full"
-          disabled={!canStop(state) || stopping}
-          onClick={onStop}
-        >
-          {stopping ? <Spinner className="size-4" /> : <Square className="size-4" />} Stop
-        </Button>
+        {held ? (
+          <Button
+            variant="destructive"
+            className="w-full"
+            disabled={busy !== null}
+            onClick={onStop}
+          >
+            {busy === "stop" ? <Spinner className="size-4" /> : <Square className="size-4" />} Stop
+          </Button>
+        ) : (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              disabled={busy !== null}
+              onClick={onDone}
+            >
+              {busy === "done" ? <Spinner className="size-4" /> : <Check className="size-4" />} Done
+            </Button>
+            {props.onRestart ? (
+              <Button
+                className="flex-1"
+                disabled={busy !== null}
+                onClick={() => run("restart", props.onRestart!)}
+              >
+                {busy === "restart" ? <Spinner className="size-4" /> : <Play className="size-4" />}{" "}
+                Walk again
+              </Button>
+            ) : null}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -149,6 +223,8 @@ export interface WalkPanelProps {
   /** True while a finished/lost run's summary should stay on screen even
    *  though the draft route (still on the map) is non-empty. */
   showSummary: boolean
+  /** Take the summary down — the explicit exit from a terminal state. */
+  onDismissSummary(): void
   presets: Preset[]
   loading: boolean
   onReloadPresets(): void
@@ -165,28 +241,42 @@ export default function WalkPanel(props: WalkPanelProps) {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  // A walk (or a finished/lost run's still-pinned summary) shows the live view.
-  // A bare pinned location does NOT -- it stays editable so the next location
-  // can be set from the Set-location tab without stopping first.
-  if (showsLiveDock(meta.state, props.showSummary)) {
-    return <LiveWalkPanel />
-  }
-
   const set = <K extends keyof DraftSettings>(key: K, value: DraftSettings[K]) => {
     props.onSettingsChange({ ...props.settings, [key]: value })
+  }
+
+  // Throws, unlike onStart: the summary's "Walk again" reports a failed start
+  // through its own footer, not through this panel's startError (which is only
+  // rendered in the editor branch below and would be invisible there).
+  const beginWalk = async () => {
+    await startWalk(startBody(props.route, props.settings))
+    props.onStarted()
   }
 
   const onStart = async () => {
     setStarting(true)
     setStartError(null)
     try {
-      await startWalk(startBody(props.route, props.settings))
-      props.onStarted()
+      await beginWalk()
     } catch (error) {
       setStartError(errorText(error))
     } finally {
       setStarting(false)
     }
+  }
+
+  // A walk (or a finished/lost run's still-pinned summary) shows the live view.
+  // A bare pinned location does NOT -- it stays editable so the next location
+  // can be set from the Set-location tab without stopping first.
+  if (showsLiveDock(meta.state, props.showSummary)) {
+    return (
+      <LiveWalkPanel
+        onDismiss={props.onDismissSummary}
+        // The draft route survives a run, so re-running it is one click. Absent
+        // when there is nothing to re-run -- e.g. a walk this tab did not start.
+        onRestart={canStart(props.route) ? beginWalk : null}
+      />
+    )
   }
 
   const onSave = async () => {

@@ -151,6 +151,26 @@ describe("applyMessage: state", () => {
     const cleared = applyMessage(errored, { type: "state", state: "idle", error: null })
     expect(cleared.error).toBeNull()
   })
+
+  it("adopts the authoritative stats a terminal state carries", () => {
+    const walking = applyMessage(fromStatus(status), { type: "fix", fix: fix(4), stats, state: "walking" })
+    // One tick ahead of the last fix: the run ended on a set() that never
+    // reached on_fix, so this count is the only place it is reported.
+    const final: Stats = { elapsed_s: 5, distance_m: 6.5, laps: 1, reconnects: 2, ticks: 5 }
+    const after = applyMessage(walking, { type: "state", state: "finished", error: null, stats: final })
+    expect(after.stats).toEqual(final)
+    // The last fix stays: it is what the map's dot and the trail are drawn from.
+    expect(after.fix?.elapsed_s).toBe(4)
+  })
+
+  it("keeps the stats on screen when a state message carries none", () => {
+    const walking = applyMessage(fromStatus(status), { type: "fix", fix: fix(4), stats, state: "walking" })
+    const reconnecting = applyMessage(walking, { type: "state", state: "reconnecting", error: null })
+    expect(reconnecting.stats).toEqual(stats)
+    // An explicit null is the same case -- a run that never produced stats.
+    const nulled = applyMessage(walking, { type: "state", state: "finished", error: null, stats: null })
+    expect(nulled.stats).toEqual(stats)
+  })
 })
 
 describe("applyMessage: snapshot", () => {

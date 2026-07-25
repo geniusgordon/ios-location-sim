@@ -115,6 +115,27 @@ async def test_stop_after_natural_finish_does_not_stop_session_twice():
     assert service.status().state is WalkState.IDLE
 
 
+async def test_stop_after_natural_finish_clears_the_finished_run():
+    """The GUI's "Done" on a finished run's summary.
+
+    Without it the service reports FINISHED with that run's route and trail
+    forever, so a page reload resurrects an old summary.
+    """
+    service, _ = make_service()
+    await service.start(spec(duration_s=5.0))
+    await service.wait_finished()
+    assert service.status().route  # the finished run is still being reported
+
+    await service.stop()
+
+    status = service.status()
+    assert status.state is WalkState.IDLE
+    assert status.error is None
+    assert status.route == []
+    assert status.trail == []
+    assert status.stats is None
+
+
 async def test_concurrent_start_calls_exactly_one_wins():
     """Two overlapping POST /api/walk: exactly one call should win.
 

@@ -75,6 +75,9 @@ export default function App() {
   // otherwise fall back to the editor (the waypoints are still there).
   // Dismissed by anything that means the user has moved on.
   const [showSummary, setShowSummary] = useState(false)
+  // The explicit exit, wired to the summary's Done button. Every other
+  // dismissal is a side effect of editing; this one is the one the user can see.
+  const dismissSummary = useCallback(() => setShowSummary(false), [])
 
   // Only the newest load may write state. Two overlapping fetches (StrictMode
   // double-invokes the mount effect in dev) would otherwise let whichever
@@ -226,6 +229,7 @@ export default function App() {
             setShowSummary(false)
           }}
           showSummary={showSummary}
+          onDismissSummary={dismissSummary}
           presets={presets}
           loading={loading}
           onReloadPresets={reloadPresets}

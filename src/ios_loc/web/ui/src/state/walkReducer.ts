@@ -59,7 +59,10 @@ export function applyMessage(model: WalkModel, msg: ServerMessage): WalkModel {
       // connection, and merging would keep a trail from the previous run.
       return fromStatus(msg.status)
     case "state":
-      return { ...model, state: msg.state, error: msg.error }
+      // A terminal state carries the run's authoritative stats; every other
+      // state message carries none, and must keep the ones already on screen
+      // rather than blanking the panel.
+      return { ...model, state: msg.state, error: msg.error, stats: msg.stats ?? model.stats }
     case "fix":
       return {
         ...model,

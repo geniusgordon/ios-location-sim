@@ -52,6 +52,7 @@ export interface SidebarProps {
   onSaved(name: string): void
   onStarted(): void
   showSummary: boolean
+  onDismissSummary(): void
   presets: Preset[]
   loading: boolean
   onReloadPresets(): void
@@ -132,6 +133,7 @@ export default function Sidebar(props: SidebarProps) {
             onSaved={props.onSaved}
             onStarted={props.onStarted}
             showSummary={props.showSummary}
+            onDismissSummary={props.onDismissSummary}
             presets={props.presets}
             loading={props.loading}
             onReloadPresets={props.onReloadPresets}

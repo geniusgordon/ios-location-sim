@@ -247,9 +247,11 @@ every other section are untouched.
 - **Not everything is confirmed on hardware.** `doctor`, `walk`, `set`, and
   `clear` have been exercised against a real iPhone, as has a short supervised
   run from the GUI. These have *not*: reconnect after a genuine tunnel drop (a
-  physical cable pull), a multi-hour unattended run, and device-loss surfacing
-  as an error in the browser mid-walk. Each rests on unit tests against a
-  virtual clock and a fake device rather than on real hardware.
+  physical cable pull), a multi-hour unattended run, device-loss surfacing as an
+  error in the browser mid-walk, and the GUI's end-of-run summary with its
+  **Done** / **Walk again** buttons (reaching it needs a real run to finish).
+  Each rests on unit tests against a virtual clock and a fake device rather than
+  on real hardware.
 
 ## Legal
 

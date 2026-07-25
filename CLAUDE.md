@@ -91,6 +91,21 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
 - **GUI broadcast queues are bounded and drop oldest.** A stalled browser tab must
   never apply backpressure to the tick loop — that would convert a UI problem into
   lost walking distance. `WalkService._broadcast` never awaits.
+- **A terminal state needs an exit, not a disabled Stop.** `finished`/`error`
+  keep `LiveWalkPanel` on screen (`showSummary` in `App.tsx`) but the session is
+  already torn down, so `canStop()` is false. The panel therefore swaps its
+  footer — **Stop** while `canStop`, **Done** / **Walk again** once the run is
+  over — rather than disabling the one button it has. Done calls `DELETE
+  /api/walk` as well as clearing `showSummary`: `_drive` leaves `self._run` set,
+  so the service reports `finished` with that run's route and trail until
+  something clears it and a reload would resurrect an old summary
+  (`test_stop_after_natural_finish_clears_the_finished_run`).
+- **The terminal `state` broadcast carries `stats`; the reducer must keep them.**
+  `service.py`'s final broadcast attaches the authoritative counts, which can be
+  one tick ahead of the last `fix` message (a tick is counted before `set()` is
+  awaited; `on_fix` only runs after a *successful* one). `applyMessage`'s `state`
+  case reads `msg.stats ?? model.stats`, so a terminal message adopts them and
+  every other state message leaves the on-screen numbers alone.
 - **`run_walk` swallows `SessionLost`,** so `_WatchedSession` records it and the GUI
   reports a lost device as an error rather than a clean finish.
 - **`WalkService.start()` / `stop()` are serialized under an `asyncio.Lock`.**

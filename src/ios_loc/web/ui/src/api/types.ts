@@ -25,7 +25,7 @@ export type LatLon = [number, number]
 // --- WebSocket messages -----------------------------------------------------
 // Not in OpenAPI (it cannot describe WebSockets). These mirror, byte for byte:
 //   api.py:160          -> {"type": "snapshot", "status": WalkStatus}
-//   service.py:197 etc. -> {"type": "state", "state": ..., "error": ...}
+//   service.py:197 etc. -> {"type": "state", "state": ..., "error": ..., "stats"?: ...}
 //   service.py:385      -> {"type": "fix", "fix": ..., "stats": ..., "state": ...}
 // Only the snapshot carries `route` and `trail`, and it is sent exactly once
 // per connection.
@@ -39,6 +39,14 @@ export interface StateMessage {
   type: "state"
   state: WalkStateName
   error: string | null
+  /**
+   * Only on a terminal state (`service.py`'s final broadcast), absent on every
+   * other state message. These are the authoritative numbers and can be one
+   * tick ahead of the last "fix" message: `run_walk` counts a tick before
+   * `session.set()` is awaited, while `on_fix` only runs after a *successful*
+   * set, so a run ending on a lost session never broadcasts its last tick.
+   */
+  stats?: Stats | null
 }
 
 export interface FixMessage {
