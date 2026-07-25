@@ -29,6 +29,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ios_loc"]
+# The frontend *source* lives inside the package because Vite builds into
+# `web/static/`, which must ship. The source itself must not: an installed wheel
+# carries the built bundle, and nobody compiles TSX from site-packages.
+exclude = ["src/ios_loc/web/ui"]
 
 # Builds src/ios_loc/web/static/ with pnpm when packaging a wheel. Skipped for
 # editable installs, so `uv sync` needs no Node. See hatch_build.py.
