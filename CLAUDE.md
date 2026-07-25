@@ -1,54 +1,42 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) when working in this repository.
+
+**README.md is the source of truth for everything a user does** — install, CLI and
+GUI usage, every `make` target, the config file format, and what is unverified on
+hardware. Read it first, and when it already says something, link to it instead of
+restating it here. This file is only what the README has no reason to explain: the
+layering, the invariants, and where the traps are.
 
 ## What this is
 
 `ios-loc` — a CLI plus local web GUI that simulates GPS location on iOS 17+ devices
 via `pymobiledevice3`: hold a fixed point, or walk/cycle a routed path at a realistic
-pace for hours. Python 3.13, `uv`-managed, package at `src/ios_loc/`. The repo is
-public — keep the name of any specific game out of code, docs, and commits.
+pace for hours. Python 3.13, `uv`-managed, package at `src/ios_loc/`, React frontend
+at `src/ios_loc/web/ui/`.
 
-Only source is committed: the GUI bundle under `src/ios_loc/web/static/` is gitignored
-build output, so `make install` installs the CLI and the GUI needs `make build`
-(Node 20+) once.
+**The repo is public — keep the name of any specific game out of code, docs, and
+commits.**
 
-## Commands
+## Working here
 
-The `Makefile` at the repo root is the entry point — it owns the `cd` into the
-five-deep frontend directory, so this list stays short and cannot drift from it.
-`make help` lists every target.
-
-```bash
-make install      # uv sync (CLI only; the GUI also needs `make build`)
-make check        # THE FULL GATE: ruff + pytest + vitest + oxlint + pnpm build
-make test         # both suites          make test-py / make test-ui for one
-make lint         # both linters         make fmt to apply ruff's fixes
-make build        # (re)build the bundle in web/static/ — required by `gui`
-make gui          # build, then serve    make dev for vite + API together
-make schema       # regenerate src/ios_loc/web/ui/api-schema.json
-uv run pytest tests/test_walker.py::test_name -q   # single test
-```
-
-Python is linted and formatted by `ruff` (config in `pyproject.toml`), at
-`line-length = 100` rather than the default 88 — this codebase predates the
-formatter and its own p99 line is 91. `BLE001` is deliberately on, since the code
-already annotates every intentional broad `except` with a reason; `session.py` and
-`cli.py` are exempt because absorbing anything is their contract. Three rules are
-off with reasons stated inline in `pyproject.toml` — don't re-enable `B905` or
-`UP042` without reading them, as both change runtime behaviour.
-
-Every test runs under a 60s `pytest-timeout` cap, so a regression in the broadcast
-path fails loudly instead of hanging the suite. On the frontend, `pnpm build` runs
-`tsc -b` first, so it is also the typecheck; oxlint carries two expected
-`only-export-components` warnings in vendored shadcn files.
-
-Running against hardware needs tunneld up first (once per boot, needs sudo):
-
-```bash
-sudo pymobiledevice3 remote tunneld -d
-uv run ios-loc doctor                # verifies tunneld → device → DVT channel
-```
+- **`make check` is the full gate** — ruff, pytest, vitest, oxlint, and a real
+  frontend build. Run it before reporting anything as done. `make help` lists every
+  target; README's Development section says what each is for. A single test is
+  `uv run pytest tests/test_walker.py::test_name -q`.
+- **Only source is committed.** `web/static/` is generated, so a change under
+  `web/ui/` stays invisible to `ios-loc gui` until it is rebuilt — `make gui` does
+  that for you. See the `web/static/` invariant below.
+- **ruff's config explains itself in `pyproject.toml` comments** — why the line
+  length is 100, why `BLE001` is on with two exemptions, and why three rules are
+  off. Read those comments before touching that block: re-enabling `B905` or
+  `UP042` changes runtime behaviour.
+- **A hanging suite is a bug, not a slow test.** Every test runs under a 60s
+  `pytest-timeout` cap so a regression in the broadcast path fails loudly. On the
+  frontend, oxlint carries two expected `only-export-components` warnings in
+  vendored shadcn files; anything else is real.
+- **Hardware** needs `sudo pymobiledevice3 remote tunneld -d` once per boot, then
+  `uv run ios-loc doctor` to verify tunneld → device → DVT channel.
 
 ## Architecture
 
@@ -123,20 +111,17 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   those two functions are the only places in the app that flip a pair. A third
   flip anywhere else produces plausible-looking coordinates in the wrong
   hemisphere, with no error.
-- **`web/static/` is generated, gitignored, and required by `gui`.** A change
-  under `web/ui/` that is not followed by a build is invisible to `ios-loc gui`,
-  which reads the built bundle, never the source. Nothing verifies that a
-  *present* bundle matches current source, so three things guard it:
-  `make gui` rebuilds before serving (the cheapest guard — use it),
-  `cli._require_ui_assets()` refuses to serve when `static/index.html` is
-  absent (a missing bundle would otherwise mount nothing and serve a bare 404),
-  and `hatch_build.py` runs `pnpm build` for the wheel target so a released
-  wheel always carries a bundle matching its source. That hook keys off
-  `version == "editable"`, NOT `self.target_name` — hatchling builds an
-  editable install as the *wheel* target, so a `target_name` check would never
-  match and every `uv sync` would demand pnpm. The wheel ships `web/static/` but
-  excludes `web/ui/` (`[tool.hatch.build.targets.wheel] exclude`) — the built
-  bundle is what an installed copy needs; its TSX source is not.
+- **`web/static/` is generated, gitignored, and required by `gui`.** `ios-loc gui`
+  reads the built bundle, never the source, and nothing verifies that a *present*
+  bundle is current — so an un-rebuilt `web/ui/` change is silently invisible.
+  `make gui` rebuilds before serving; use it. Two other guards:
+  `cli._require_ui_assets()` refuses to serve when `static/index.html` is absent
+  (otherwise the app mounts nothing and serves a bare 404), and `hatch_build.py`
+  builds the bundle for the wheel target. That hook keys off
+  `version == "editable"`, NOT `self.target_name` — hatchling builds an editable
+  install as the *wheel* target, so a `target_name` check would never match and
+  every `uv sync` would demand pnpm. The wheel ships `web/static/` and excludes
+  `web/ui/` (`[tool.hatch.build.targets.wheel] exclude`).
 
 - **Python tests must pass on a checkout with no bundle.** The frontend is not
   committed, so any test that touches `web/static/` either skips when it is
@@ -178,7 +163,7 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   "node"`, `include: ["src/**/*.test.ts"]`). No jsdom, no component rendering —
   so the suite cannot catch a re-modalled sidebar, a re-rendering map, or any
   layout regression. Those are only ever caught in a real browser. Treat a green
-  `pnpm test run` as proof about reducers, the store, and the API client, not
+  `make test-ui` as proof about reducers, the store, and the API client, not
   about anything the DOM does.
 - **A set-location pin is a walk-parity device state.** `WalkService.pin()`
   holds one open session under the same lock as `start()`/`stop()`, so the
@@ -196,21 +181,14 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
 
 ## Config
 
-`~/.config/ios-loc/config.toml` (override with `--config`). `[paces.<name>]` layers
-over built-in `walk` / `bike`; a brand-new pace name inherits `walk`'s defaults for
-omitted fields. A pace has no `costing` — that lives on the route. `[presets.<name>]`
-needs `waypoints`, and may set `pace`, `costing` and `loop`. See README.md for examples.
-
-Routes are cached to `~/.cache/ios-loc/routes` (atomic writes, corrupt entries
-discarded). `--offline` fails fast rather than hitting the network — that is the mode
-for unattended overnight runs.
+`~/.config/ios-loc/config.toml`, overridable with `--config`. The file format, a
+worked example of all three table kinds, and the layering rules are in README's
+Config section. Routes cache to `~/.cache/ios-loc/routes` with atomic writes;
+corrupt entries are discarded rather than trusted.
 
 ## Hardware verification
 
-Everything except the device layer is covered by the test suite, which needs no device
-and no network. What a real iPhone has actually confirmed: `doctor`, `walk`, `set`,
-`clear`, and one short supervised GUI run. What it has not: reconnect after a genuine
-cable pull, a multi-hour unattended run, and `SessionLost` surfacing in the browser
-mid-walk. The README's Notes section states this to users — keep that honest when
-device-facing behaviour changes, and never let a green suite stand in for hardware
-proof on those paths.
+The test suite needs no device and no network, and covers everything except the
+device layer. README's Notes section lists exactly what a real iPhone has and has
+not confirmed — keep that list honest whenever device-facing behaviour changes, and
+never let a green suite stand in for hardware proof on the paths it names.
