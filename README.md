@@ -36,7 +36,7 @@ channel opens once the tunnel is up and the device is unlocked.
 ```bash
 git clone https://github.com/geniusgordon/ios-location-sim.git
 cd ios-location-sim
-uv sync                  # creates .venv and installs everything
+uv sync                  # creates .venv and installs the Python side
 uv run ios-loc --help
 ```
 
@@ -48,11 +48,15 @@ generated output and is deliberately not committed:
 cd src/ios_loc/web/ui
 pnpm install
 pnpm build               # writes the bundle to ../static
+cd -
+
+uv run ios-loc gui       # http://127.0.0.1:8765
 ```
 
 Rebuild after pulling changes that touch `src/ios_loc/web/ui/`. If you skip
-this, `ios-loc gui` refuses to start and prints the two commands above rather
-than serving a blank page.
+this, `ios-loc gui` refuses to start and prints the build command rather than
+serving a blank page. The GUI starts with no device connected — it just shows
+nothing to control until one is.
 
 Start tunneld once per boot (needs sudo — it creates the Mac↔iPhone tunnel):
 
