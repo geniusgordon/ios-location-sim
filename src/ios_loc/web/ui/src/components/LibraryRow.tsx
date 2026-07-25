@@ -10,6 +10,9 @@ export interface LibraryRowProps {
   subtitle: string
   selected: boolean
   onSelect(): void
+  /** Greys out the select button when selecting cannot succeed (e.g. a walk
+   *  owns the device, so setting a location would 409). Delete stays live. */
+  selectDisabled?: boolean
   /** Rejects with an ApiError whose message is shown inline on the row. */
   onDelete(): Promise<void>
 }
@@ -68,9 +71,10 @@ export default function LibraryRow(props: LibraryRowProps) {
       <button
         type="button"
         onClick={props.onSelect}
-        className={`hover:bg-accent flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left ${
-          props.selected ? "bg-accent" : ""
-        }`}
+        disabled={props.selectDisabled}
+        className={`flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left ${
+          props.selectDisabled ? "cursor-not-allowed opacity-50" : "hover:bg-accent"
+        } ${props.selected ? "bg-accent" : ""}`}
       >
         {props.icon}
         <span className="min-w-0 flex-1">

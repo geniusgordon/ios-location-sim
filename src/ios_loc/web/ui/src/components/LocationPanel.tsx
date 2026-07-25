@@ -185,6 +185,11 @@ export default function LocationPanel(props: LocationPanelProps) {
         <h3 className="text-muted-foreground px-4 pt-4 pb-1 text-xs font-medium tracking-wide uppercase">
           Saved places
         </h3>
+        {props.disabled && props.places.length > 0 ? (
+          <p className="text-muted-foreground px-4 pb-2 text-xs">
+            Stop the walk to set the device to a saved place.
+          </p>
+        ) : null}
         {props.placesLoading ? (
           <div className="flex items-center gap-2 px-4 pb-3 text-sm">
             <Spinner className="size-4" /> Loading places…
@@ -202,6 +207,7 @@ export default function LocationPanel(props: LocationPanelProps) {
                 title={place.name}
                 subtitle={`${place.point[0].toFixed(5)}, ${place.point[1].toFixed(5)}`}
                 selected={false}
+                selectDisabled={props.disabled}
                 onSelect={() => props.onSelectPlace(place)}
                 onDelete={() => props.onDeletePlace(place.name)}
               />
