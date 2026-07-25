@@ -10,27 +10,38 @@ pace for hours. Python 3.13, `uv`-managed, package at `src/ios_loc/`. The repo i
 public — keep the name of any specific game out of code, docs, and commits.
 
 Only source is committed: the GUI bundle under `src/ios_loc/web/static/` is gitignored
-build output, so `uv sync` installs the CLI and the GUI needs `pnpm build` (Node 20+)
-once in `src/ios_loc/web/ui/`.
+build output, so `make install` installs the CLI and the GUI needs `make build`
+(Node 20+) once.
 
 ## Commands
 
+The `Makefile` at the repo root is the entry point — it owns the `cd` into the
+five-deep frontend directory, so this list stays short and cannot drift from it.
+`make help` lists every target.
+
 ```bash
-uv sync                              # install
-uv run pytest -q                     # full suite (262 tests, ~2s, no device/network needed)
+make install      # uv sync (CLI only; the GUI also needs `make build`)
+make check        # THE FULL GATE: ruff + pytest + vitest + oxlint + pnpm build
+make test         # both suites          make test-py / make test-ui for one
+make lint         # both linters         make fmt to apply ruff's fixes
+make build        # (re)build the bundle in web/static/ — required by `gui`
+make gui          # build, then serve    make dev for vite + API together
+make schema       # regenerate src/ios_loc/web/ui/api-schema.json
 uv run pytest tests/test_walker.py::test_name -q   # single test
-uv run ios-loc --help
-uv run python scripts/export_openapi.py            # regenerate src/ios_loc/web/ui/api-schema.json
-cd src/ios_loc/web/ui && pnpm test run   # frontend pure-logic tests (97)
-cd src/ios_loc/web/ui && pnpm build      # (re)build the bundle in web/static/ — required by `gui`
 ```
 
-No linter or formatter is configured on the Python side. Every test runs under a 60s
-`pytest-timeout` cap, so a regression in the broadcast path fails loudly instead of
-hanging the suite. The frontend does have a linter — `cd src/ios_loc/web/ui && pnpm lint`
-(oxlint) — and `pnpm build` runs `tsc -b` first, so it is also the frontend typecheck.
-The full frontend gate is `pnpm test run && pnpm build && pnpm lint`; lint carries two
-expected `only-export-components` warnings in vendored shadcn files.
+Python is linted and formatted by `ruff` (config in `pyproject.toml`), at
+`line-length = 100` rather than the default 88 — this codebase predates the
+formatter and its own p99 line is 91. `BLE001` is deliberately on, since the code
+already annotates every intentional broad `except` with a reason; `session.py` and
+`cli.py` are exempt because absorbing anything is their contract. Three rules are
+off with reasons stated inline in `pyproject.toml` — don't re-enable `B905` or
+`UP042` without reading them, as both change runtime behaviour.
+
+Every test runs under a 60s `pytest-timeout` cap, so a regression in the broadcast
+path fails loudly instead of hanging the suite. On the frontend, `pnpm build` runs
+`tsc -b` first, so it is also the typecheck; oxlint carries two expected
+`only-export-components` warnings in vendored shadcn files.
 
 Running against hardware needs tunneld up first (once per boot, needs sudo):
 
@@ -113,16 +124,19 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   flip anywhere else produces plausible-looking coordinates in the wrong
   hemisphere, with no error.
 - **`web/static/` is generated, gitignored, and required by `gui`.** A change
-  under `web/ui/` that is not followed by `pnpm build` is invisible to
-  `ios-loc gui`, which reads the built bundle, never the source. Two guards
-  exist because nothing verifies the local bundle matches current source:
+  under `web/ui/` that is not followed by a build is invisible to `ios-loc gui`,
+  which reads the built bundle, never the source. Nothing verifies that a
+  *present* bundle matches current source, so three things guard it:
+  `make gui` rebuilds before serving (the cheapest guard — use it),
   `cli._require_ui_assets()` refuses to serve when `static/index.html` is
   absent (a missing bundle would otherwise mount nothing and serve a bare 404),
   and `hatch_build.py` runs `pnpm build` for the wheel target so a released
   wheel always carries a bundle matching its source. That hook keys off
   `version == "editable"`, NOT `self.target_name` — hatchling builds an
   editable install as the *wheel* target, so a `target_name` check would never
-  match and every `uv sync` would demand pnpm.
+  match and every `uv sync` would demand pnpm. The wheel ships `web/static/` but
+  excludes `web/ui/` (`[tool.hatch.build.targets.wheel] exclude`) — the built
+  bundle is what an installed copy needs; its TSX source is not.
 
 - **Python tests must pass on a checkout with no bundle.** The frontend is not
   committed, so any test that touches `web/static/` either skips when it is

@@ -45,18 +45,15 @@ map GUI additionally needs its frontend bundle built once — `web/static/` is
 generated output and is deliberately not committed:
 
 ```bash
-cd src/ios_loc/web/ui
-pnpm install
-pnpm build               # writes the bundle to ../static
-cd -
-
+make build               # pnpm install + pnpm build, into web/static/
 uv run ios-loc gui       # http://127.0.0.1:8765
 ```
 
-Rebuild after pulling changes that touch `src/ios_loc/web/ui/`. If you skip
-this, `ios-loc gui` refuses to start and prints the build command rather than
-serving a blank page. The GUI starts with no device connected — it just shows
-nothing to control until one is.
+Rebuild after pulling changes that touch `src/ios_loc/web/ui/`, or just use
+`make gui`, which rebuilds before serving. If the bundle is missing entirely,
+`ios-loc gui` refuses to start and prints the build command rather than serving
+a blank page. The GUI starts with no device connected — it just shows nothing to
+control until one is.
 
 Start tunneld once per boot (needs sudo — it creates the Mac↔iPhone tunnel):
 
@@ -176,24 +173,27 @@ which disables routing only.
 
 ## Development
 
-```bash
-uv run pytest -q                          # full Python suite, ~2s, no device or network
-uv run python scripts/export_openapi.py   # regenerate the OpenAPI schema the frontend types from
-```
-
-#### Developing the UI
+The `Makefile` wraps both halves of the project, so you never need to remember
+which language a command belongs to or `cd` into the frontend. `make help` lists
+every target.
 
 ```bash
-cd src/ios_loc/web/ui
-pnpm dev          # vite on 5173, proxying /api and /ws to uvicorn on 8765
-pnpm test run     # pure-logic tests (reducer, store, follow mode, API client)
-pnpm build        # writes the bundle to ../static
-pnpm lint         # oxlint
-pnpm gen:api      # regenerates src/api/schema.d.ts from api-schema.json
+make check        # the full gate: ruff + pytest + vitest + oxlint + a real build
+make test         # both test suites (Python ~2s, neither needs a device or network)
+make lint         # ruff + oxlint          make fmt applies ruff's formatting
+make dev          # vite on 5173 (proxying to the API on 8765), both at once
+make gui          # rebuild the bundle, then serve it
+make schema       # regenerate the OpenAPI schema the frontend types from
+make types        # regenerate the frontend's types from that schema
 ```
 
-`src/ios_loc/web/static/` is gitignored build output: `pnpm dev` serves the UI
-from source, and `pnpm build` is what `ios-loc gui` reads. Wheels build it
+Python is linted and formatted with `ruff`; the frontend uses oxlint, and its
+build runs `tsc -b` first so it doubles as the typecheck. Every target is a thin
+wrapper — the underlying commands are `uv run …` and the scripts in
+`src/ios_loc/web/ui/package.json` if you ever want them directly.
+
+`src/ios_loc/web/static/` is gitignored build output: `make dev` serves the UI
+from source, while `ios-loc gui` reads the built bundle. Wheels build it
 automatically — `uv build` / `uv tool install .` run `pnpm build` through a
 hatchling hook (`hatch_build.py`), so a released wheel always carries a bundle
 matching its source.
