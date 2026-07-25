@@ -14,7 +14,7 @@ export function formatDuration(seconds: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
 }
 
-/** The 20 km/h Pikmin Bloom ceiling is stated in km/h, so show km/h. */
+/** The 20 km/h speed ceiling is stated in km/h, so show km/h. */
 export function formatSpeed(metresPerSecond: number): string {
   return `${(metresPerSecond * 3.6).toFixed(1)} km/h`
 }

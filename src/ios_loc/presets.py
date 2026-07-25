@@ -13,7 +13,7 @@ import tomli_w
 
 from ios_loc.path import Coord
 
-# Pikmin Bloom stops crediting distance above roughly 20 km/h.
+# Location-based games stop crediting distance above roughly 20 km/h.
 MAX_SPEED_MPS = 5.56
 
 DEFAULT_CONFIG_PATH = pathlib.Path.home() / ".config" / "ios-loc" / "config.toml"
@@ -43,7 +43,7 @@ class Profile:
             raise ValueError(
                 f"profile {self.name!r}: speed {self.speed} m/s "
                 f"({self.speed * 3.6:.1f} km/h) exceeds the {MAX_SPEED_MPS} m/s "
-                f"(20 km/h) ceiling; Pikmin Bloom would not credit the distance"
+                f"(20 km/h) ceiling; movement above it is not credited"
             )
         if self.jitter < 0:
             raise ValueError(f"profile {self.name!r}: jitter must not be negative")

@@ -4,19 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`ios-loc` — a CLI that simulates GPS location on iOS 17+ devices via `pymobiledevice3`,
-used to walk/cycle routes for Pikmin Bloom. Python 3.13, `uv`-managed, package at
-`src/ios_loc/`.
+`ios-loc` — a CLI plus local web GUI that simulates GPS location on iOS 17+ devices
+via `pymobiledevice3`: hold a fixed point, or walk/cycle a routed path at a realistic
+pace for hours. Python 3.13, `uv`-managed, package at `src/ios_loc/`. The repo is
+public — keep the name of any specific game out of code, docs, and commits.
 
 ## Commands
 
 ```bash
 uv sync                              # install
-uv run pytest -q                     # full suite (205 tests, ~2s, no device/network needed)
+uv run pytest -q                     # full suite (249 tests, ~2s, no device/network needed)
 uv run pytest tests/test_walker.py::test_name -q   # single test
 uv run ios-loc --help
 uv run python scripts/export_openapi.py            # regenerate src/ios_loc/web/ui/api-schema.json
-cd src/ios_loc/web/ui && pnpm test run   # frontend pure-logic tests
+cd src/ios_loc/web/ui && pnpm test run   # frontend pure-logic tests (94)
 cd src/ios_loc/web/ui && pnpm build      # rebuild the committed bundle in web/static/
 ```
 
@@ -63,8 +64,8 @@ TypeScript types from this file rather than hand-copying the API shape.
 
 These were each fixed deliberately; re-breaking them is silent, not loud.
 
-- **20 km/h ceiling (`MAX_SPEED_MPS = 5.56`).** Pikmin Bloom stops crediting distance
-  above it, so an over-speed run produces nothing. Enforced in `Profile.__post_init__`
+- **20 km/h ceiling (`MAX_SPEED_MPS = 5.56`).** Location-based games stop crediting
+  distance above it, so an over-speed run produces nothing. Enforced in `Profile.__post_init__`
   and again per-tick in `Walker._tick_speed` against the *jittered* speed, not the base.
 - **An outage costs distance; it never causes a jump.** If `session.set()` blocks on a
   reconnect, `run_walk` resets its deadline to now instead of firing a catch-up burst
@@ -99,9 +100,9 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
 - **A 1 Hz fix must not re-render the map.** The frontend store
   (`web/ui/src/state/walkStore.ts`) has three channels: telemetry (every
   message), meta (only when state/route/preset actually change), and fix
-  (imperative, the map's dot-mover). `LiveDock` inside `Dock.tsx` is the
-  ONLY component that calls `useWalkTelemetry` — a second caller anywhere
-  above the dock re-renders that subtree once a second.
+  (imperative, the map's dot-mover). `WalkPanel.tsx` is the ONLY component
+  that calls `useWalkTelemetry` — a second caller higher up (`App`, `Sidebar`)
+  re-renders that whole subtree, map included, once a second.
 - **`[lat, lon]` on the wire, `[lng, lat]` in MapLibre.**
   `src/ios_loc/web/ui/src/lib/coords.ts` exports `toLngLat` / `fromLngLat`, and
   those two functions are the only places in the app that flip a pair. A third
@@ -111,17 +112,18 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   not followed by `pnpm build` ships nothing. Nothing checks that the committed
   bundle matches current source — a UI change committed without `pnpm build`
   ships the *old* UI silently, and the Python suite stays green.
-- **The route-library `Sheet` is deliberately non-modal.** `RouteLibrary.tsx`
-  passes `modal={false}`, `disablePointerDismissal`, and `showOverlay={false}`,
-  and clears the dock with `data-[side=left]:bottom-14 data-[side=left]:h-auto`
-  against the `h-14` dock. A modal Sheet renders a backdrop over the map and
-  dismisses on outside-press, which swallows every map click — and drawing a
-  route while the library is open is a supported flow. That failure passed
-  every test. The `data-[side=left]:` prefix on the overrides is load-bearing:
-  an unprefixed class loses to `sheet.tsx`'s own variant-prefixed
-  `inset-y-0`/`h-full` under tailwind-merge. Row deletion confirms inline
-  (local row state) rather than via an AlertDialog, for the same reason: a
-  modal dialog would reintroduce the backdrop the sheet exists to avoid.
+- **The sidebar must never cover or swallow the map on desktop.**
+  `Sidebar.tsx` renders as an inline flex column (`w-[360px]`, no scrim) when
+  `overlay` is false, and takes the fixed-drawer + `bg-black/30` scrim branch
+  only on mobile (`useIsMobile`). Drawing a route with the sidebar open is the
+  primary flow, so any modal wrapper — Sheet, Dialog, AlertDialog —
+  reintroduces a backdrop that eats every map click. That failure passes every
+  test in the suite. Row deletion therefore confirms inline (local row state in
+  `LibraryRow.tsx`), not via an AlertDialog.
+- **The active sidebar tab decides what a map tap does.** `location` → set the
+  device at the tapped point; `walk` → append a waypoint. One tap handler
+  branching on tab; a second map-click path is how the two modes start fighting
+  over the same gesture.
 - **One `StartRequest` builder.** `web/ui/src/lib/startBody.ts` is the only
   place a start body is constructed. Two inline copies (the quick bar and the
   start form) is how the two paths silently drifted apart — a named route must
