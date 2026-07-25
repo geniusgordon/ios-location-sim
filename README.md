@@ -110,7 +110,9 @@ uv run ios-loc gui --udid <UDID>        # pick a specific device
 `--host` defaults to `127.0.0.1`; leave it there unless you really want control
 of your phone's location reachable from the rest of your network.
 
-![The map GUI: a drawn route on the Walk tab](docs/screenshot.png)
+![Set location tab: a coordinate dropped on the map, with the save-place form and saved places](docs/set-location.png)
+
+![Walk tab: a routed walk from Taipei Main Station to Taipei 101, ready to start](docs/walk.png)
 
 The page is a full-screen map beside a sidebar (open by default, collapsible;
 it overlays the map on narrow screens). A chip at the top of the sidebar shows
