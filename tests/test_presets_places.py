@@ -57,12 +57,12 @@ def test_an_out_of_range_point_is_a_config_error(tmp_path):
 
 MIXED_CONFIG = """\
 # hand-written header — must survive
-[profiles.jog]
+[paces.jog]
 speed = 2.6  # trailing comment
 
 [presets.old]
 waypoints = [[25.0, 121.0], [25.1, 121.1]]
-profile = "jog"
+pace = "jog"
 
 [places.home]
 point = [25.033, 121.565]
@@ -75,7 +75,7 @@ def test_saving_a_place_into_a_missing_file_creates_it(tmp_path):
     assert load_places(path)["home"].point == (25.0, 121.0)
 
 
-def test_saving_a_place_preserves_presets_profiles_and_comments(tmp_path):
+def test_saving_a_place_preserves_presets_paces_and_comments(tmp_path):
     path = tmp_path / "config.toml"
     path.write_text(MIXED_CONFIG)
 
@@ -84,8 +84,8 @@ def test_saving_a_place_preserves_presets_profiles_and_comments(tmp_path):
     text = path.read_text()
     assert "# hand-written header — must survive" in text
     assert "speed = 2.6  # trailing comment" in text
-    profiles, presets = load_config(path)
-    assert profiles["jog"].speed == 2.6
+    paces, presets = load_config(path)
+    assert paces["jog"].speed == 2.6
     assert presets["old"].waypoints == [(25.0, 121.0), (25.1, 121.1)]
     assert set(load_places(path)) == {"home", "office"}
 

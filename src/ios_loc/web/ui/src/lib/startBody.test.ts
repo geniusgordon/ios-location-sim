@@ -14,16 +14,31 @@ describe("startBody", () => {
     expect(body.costing).toBe("bicycle")
   })
 
-  it("sends the name alone for a named route", () => {
+  it("sends the name instead of waypoints for a named route", () => {
     const body = startBody(NAMED, defaultSettings)
     expect(body.preset).toBe("riverside")
     expect(body.waypoints).toBeNull()
-    expect(body.costing).toBeNull()
   })
 
-  it("sends null, not zero, for an unset profile and a blank duration", () => {
+  // Routing mode is the only thing that decides costing. It is sent for a named
+  // route too -- `loadPreset` seeds the select from that preset's saved costing,
+  // so this echoes it back unless the user deliberately changed it.
+  it("always sends the chosen costing, named route or not", () => {
+    expect(startBody(NAMED, { ...defaultSettings, costing: "auto" }).costing).toBe("auto")
+    expect(startBody(TWO, { ...defaultSettings, costing: "auto" }).costing).toBe("auto")
+  })
+
+  // The pace must never leak into the route: picking `bike` for its speed and
+  // leaving Routing mode alone has to keep planning a pedestrian route.
+  it("does not let the pace change the costing", () => {
+    const body = startBody(TWO, { ...defaultSettings, pace: "bike" })
+    expect(body.pace).toBe("bike")
+    expect(body.costing).toBe("pedestrian")
+  })
+
+  it("sends null, not zero, for an unset pace and a blank duration", () => {
     const body = startBody(TWO, defaultSettings)
-    expect(body.profile).toBeNull()
+    expect(body.pace).toBeNull()
     expect(body.duration_s).toBeNull()
     expect(body.speed).toBeNull()
   })

@@ -1,10 +1,10 @@
 import random
 import pytest
 from ios_loc.path import Path, haversine_m
-from ios_loc.presets import DEFAULT_PROFILES, MAX_SPEED_MPS, Profile
+from ios_loc.presets import DEFAULT_PACES, MAX_SPEED_MPS, Pace
 from ios_loc.walker import Walker
 
-WALK = DEFAULT_PROFILES["walk"]
+WALK = DEFAULT_PACES["walk"]
 
 
 def straight_path(length_deg=0.01):
@@ -12,15 +12,15 @@ def straight_path(length_deg=0.01):
     return Path([(0.0, 0.0), (length_deg, 0.0)])
 
 
-def no_pause(profile: Profile) -> Profile:
+def no_pause(pace: Pace) -> Pace:
     from dataclasses import replace
 
-    return replace(profile, pause_per_min=0.0)
+    return replace(pace, pause_per_min=0.0)
 
 
 def test_distance_accumulates_at_base_speed_without_jitter():
-    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
-    w = Walker(straight_path(), profile, rng=random.Random(0), scatter_m=0.0)
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 0.0}))
+    w = Walker(straight_path(), pace, rng=random.Random(0), scatter_m=0.0)
     for _ in range(100):
         w.advance(1.0)
     assert w.distance_m == pytest.approx(130.0, rel=1e-6)  # 100 s * 1.3 m/s
@@ -34,14 +34,13 @@ def test_elapsed_tracks_total_dt():
 
 
 def test_speed_never_exceeds_ceiling_even_with_extreme_jitter():
-    hot = Profile(
+    hot = Pace(
         name="hot",
         speed=MAX_SPEED_MPS,
         jitter=5.0,  # absurd, to stress the clamp
         pause_per_min=0.0,
         pause_min_s=1,
         pause_max_s=2,
-        costing="bicycle",
     )
     w = Walker(straight_path(1.0), hot, loop=True, rng=random.Random(1))
     for _ in range(10_000):
@@ -50,8 +49,8 @@ def test_speed_never_exceeds_ceiling_even_with_extreme_jitter():
 
 
 def test_speed_is_never_negative():
-    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 3.0}))
-    w = Walker(straight_path(1.0), profile, loop=True, rng=random.Random(2))
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 3.0}))
+    w = Walker(straight_path(1.0), pace, loop=True, rng=random.Random(2))
     for _ in range(5_000):
         assert w.advance(1.0).speed_mps >= 0.0
 
@@ -91,7 +90,7 @@ def test_jitter_produces_varying_speed():
 
 
 def test_pauses_occur_and_freeze_distance():
-    always_pause = Profile(**{**WALK.__dict__, "pause_per_min": 60.0})
+    always_pause = Pace(**{**WALK.__dict__, "pause_per_min": 60.0})
     w = Walker(straight_path(1.0), always_pause, loop=True, rng=random.Random(5), scatter_m=0.0)
     saw_pause = False
     for _ in range(300):
@@ -106,8 +105,8 @@ def test_pauses_occur_and_freeze_distance():
 
 def test_loop_wraps_without_discontinuity():
     path = straight_path(0.001)  # ~111 m
-    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
-    w = Walker(path, profile, loop=True, rng=random.Random(6), scatter_m=0.0)
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 0.0}))
+    w = Walker(path, pace, loop=True, rng=random.Random(6), scatter_m=0.0)
     prev = None
     for _ in range(500):
         fix = w.advance(1.0)
@@ -120,8 +119,8 @@ def test_loop_wraps_without_discontinuity():
 
 def test_non_loop_finishes_at_end_of_path():
     path = straight_path(0.0005)  # ~55 m
-    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
-    w = Walker(path, profile, loop=False, rng=random.Random(7), scatter_m=0.0)
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 0.0}))
+    w = Walker(path, pace, loop=False, rng=random.Random(7), scatter_m=0.0)
     for _ in range(200):
         w.advance(1.0)
     assert w.finished
@@ -129,9 +128,9 @@ def test_non_loop_finishes_at_end_of_path():
 
 
 def test_scatter_perturbs_position_but_not_distance():
-    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
-    clean = Walker(straight_path(1.0), profile, loop=True, rng=random.Random(8), scatter_m=0.0)
-    noisy = Walker(straight_path(1.0), profile, loop=True, rng=random.Random(8), scatter_m=5.0)
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 0.0}))
+    clean = Walker(straight_path(1.0), pace, loop=True, rng=random.Random(8), scatter_m=0.0)
+    noisy = Walker(straight_path(1.0), pace, loop=True, rng=random.Random(8), scatter_m=5.0)
     for _ in range(50):
         a, b = clean.advance(1.0), noisy.advance(1.0)
     # Distance bookkeeping is identical...
@@ -155,8 +154,8 @@ def test_800m_loop_at_walking_pace_takes_about_ten_minutes():
 def test_distance_m_is_cumulative_not_wrapped():
     # The CLI reports this as total distance walked, so it must not reset each
     # lap: 600 s at 1.3 m/s is 780 m however short the underlying path is.
-    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
-    w = Walker(straight_path(0.001), profile, loop=True, rng=random.Random(0), scatter_m=0.0)
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 0.0}))
+    w = Walker(straight_path(0.001), pace, loop=True, rng=random.Random(0), scatter_m=0.0)
     for _ in range(600):
         w.advance(1.0)
     assert w.distance_m == pytest.approx(780.0, rel=1e-6)
@@ -165,8 +164,8 @@ def test_distance_m_is_cumulative_not_wrapped():
 
 def test_open_path_loop_retraces_instead_of_teleporting():
     # An A->B route with --loop must bounce B->A->B, never jump back to A.
-    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
-    w = Walker(straight_path(0.001), profile, loop=True, rng=random.Random(0), scatter_m=0.0)
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 0.0}))
+    w = Walker(straight_path(0.001), pace, loop=True, rng=random.Random(0), scatter_m=0.0)
     lats = [w.advance(1.0).lat for _ in range(400)]
     peak = lats.index(max(lats))
     assert max(lats) > 0.0009, "should reach the far end of the route"
@@ -178,8 +177,8 @@ def test_open_path_loop_retraces_instead_of_teleporting():
 def test_closed_loop_wraps_by_modulo_not_bounce():
     path = Path([(0.0, 0.0), (0.001, 0.0), (0.001, 0.001), (0.0, 0.0)])
     assert path.is_closed_loop
-    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
-    w = Walker(path, profile, loop=True, rng=random.Random(0), scatter_m=0.0)
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 0.0}))
+    w = Walker(path, pace, loop=True, rng=random.Random(0), scatter_m=0.0)
     folded = []
     for _ in range(800):
         w.advance(1.0)
@@ -203,9 +202,9 @@ def test_large_dt_still_credits_distance():
 
 def test_large_dt_matches_many_small_ticks():
     # Distance over one 600 s tick should be close to 600 one-second ticks.
-    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
-    big = Walker(straight_path(1.0), profile, loop=True, rng=random.Random(0), scatter_m=0.0)
-    small = Walker(straight_path(1.0), profile, loop=True, rng=random.Random(0), scatter_m=0.0)
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 0.0}))
+    big = Walker(straight_path(1.0), pace, loop=True, rng=random.Random(0), scatter_m=0.0)
+    small = Walker(straight_path(1.0), pace, loop=True, rng=random.Random(0), scatter_m=0.0)
     big.advance(600.0)
     for _ in range(600):
         small.advance(1.0)
@@ -213,8 +212,8 @@ def test_large_dt_matches_many_small_ticks():
 
 
 def test_speed_is_zero_once_finished():
-    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
-    w = Walker(straight_path(0.0005), profile, loop=False, rng=random.Random(0), scatter_m=0.0)
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 0.0}))
+    w = Walker(straight_path(0.0005), pace, loop=False, rng=random.Random(0), scatter_m=0.0)
     for _ in range(200):
         w.advance(1.0)
     assert w.finished
@@ -224,9 +223,9 @@ def test_speed_is_zero_once_finished():
 
 
 def test_round_trip_on_open_path_counts_as_one_lap():
-    profile = no_pause(Profile(**{**WALK.__dict__, "jitter": 0.0}))
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 0.0}))
     path = straight_path(0.001)
-    w = Walker(path, profile, loop=True, rng=random.Random(0), scatter_m=0.0)
+    w = Walker(path, pace, loop=True, rng=random.Random(0), scatter_m=0.0)
     # Walk exactly two path lengths: out and back.
     while w.distance_m < 2 * path.length_m:
         w.advance(1.0)

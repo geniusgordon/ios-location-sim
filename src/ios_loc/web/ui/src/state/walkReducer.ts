@@ -15,7 +15,7 @@ export interface WalkModel {
   route: LatLon[]
   trail: Fix[]
   preset_name: string | null
-  profile: string | null
+  pace: string | null
   loop: boolean
   length_m: number | null
 }
@@ -28,7 +28,7 @@ export const initialModel: WalkModel = {
   route: [],
   trail: [],
   preset_name: null,
-  profile: null,
+  pace: null,
   loop: false,
   length_m: null,
 }
@@ -46,7 +46,7 @@ export function fromStatus(status: WalkStatus): WalkModel {
     route: (status.route ?? []) as LatLon[],
     trail: status.state === "pinned" ? [] : tail(status.trail ?? []),
     preset_name: status.preset_name ?? null,
-    profile: status.profile ?? null,
+    pace: status.pace ?? null,
     loop: status.loop ?? false,
     length_m: status.length_m ?? null,
   }
@@ -83,7 +83,7 @@ export interface WalkMeta {
   error: string | null
   route: LatLon[]
   preset_name: string | null
-  profile: string | null
+  pace: string | null
   loop: boolean
   length_m: number | null
 }
@@ -94,7 +94,7 @@ export function metaOf(model: WalkModel): WalkMeta {
     error: model.error,
     route: model.route,
     preset_name: model.preset_name,
-    profile: model.profile,
+    pace: model.pace,
     loop: model.loop,
     length_m: model.length_m,
   }
@@ -105,7 +105,7 @@ export function metaEquals(a: WalkMeta, b: WalkMeta): boolean {
     a.state !== b.state ||
     a.error !== b.error ||
     a.preset_name !== b.preset_name ||
-    a.profile !== b.profile ||
+    a.pace !== b.pace ||
     a.loop !== b.loop ||
     a.length_m !== b.length_m
   ) {

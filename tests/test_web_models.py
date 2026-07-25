@@ -30,13 +30,15 @@ def test_stats_out_carries_every_field():
 
 
 def test_preset_out_flattens_waypoints_to_lists():
-    preset = Preset(name="home", waypoints=[(25.0, 121.0), (25.1, 121.1)], profile="bike", loop=True)
+    preset = Preset(name="home", waypoints=[(25.0, 121.0), (25.1, 121.1)], pace="bike", loop=True)
     out = PresetOut.from_preset(preset)
     assert out.model_dump() == {
         "name": "home",
         "waypoints": [[25.0, 121.0], [25.1, 121.1]],
-        "profile": "bike",
+        "pace": "bike",
         "loop": True,
+        # A saved route owns its costing; `bike` as a pace does not imply one.
+        "costing": "pedestrian",
     }
 
 

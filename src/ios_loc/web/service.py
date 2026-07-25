@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass, field
 
 from ios_loc.path import Coord, Path
-from ios_loc.presets import Profile
+from ios_loc.presets import Pace
 from ios_loc.runner import run_walk
 from ios_loc.session import SessionLost
 from ios_loc.walker import Walker
@@ -27,7 +27,7 @@ class WalkAlreadyRunning(RuntimeError):
 class StartSpec:
     waypoints: list[Coord]
     costing: str
-    profile: Profile
+    pace: Pace
     loop: bool = False
     duration_s: float | None = None
     scatter_m: float = 3.0
@@ -162,7 +162,7 @@ class WalkService:
             route=[[lat, lon] for lat, lon in run.path.coords],
             trail=list(run.trail),
             preset_name=run.spec.preset_name,
-            profile=run.spec.profile.name,
+            pace=run.spec.pace.name,
             loop=run.spec.loop,
             length_m=run.path.length_m,
         )
@@ -194,7 +194,7 @@ class WalkService:
                 )
 
                 walker = Walker(
-                    path, spec.profile, loop=spec.loop, rng=self._rng, scatter_m=spec.scatter_m
+                    path, spec.pace, loop=spec.loop, rng=self._rng, scatter_m=spec.scatter_m
                 )
                 session = _WatchedSession(self._session_factory(), self._clock)
                 run = _Run(

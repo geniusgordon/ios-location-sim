@@ -1,5 +1,5 @@
 import { PanelLeftClose } from "lucide-react"
-import type { LatLon, Place, Preset } from "@/api/types"
+import type { LatLon, Pace, Place, Preset } from "@/api/types"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs"
 import DeviceChip from "@/components/DeviceChip"
@@ -45,7 +45,7 @@ export interface SidebarProps {
   routePending: boolean
   routeError: string | null
   loadError: string | null
-  profiles: string[]
+  paces: Pace[]
   offline: boolean
   onRemoveLast(): void
   onClear(): void
@@ -125,7 +125,7 @@ export default function Sidebar(props: SidebarProps) {
             routePending={props.routePending}
             routeError={props.routeError}
             loadError={props.loadError}
-            profiles={props.profiles}
+            paces={props.paces}
             offline={props.offline}
             onRemoveLast={props.onRemoveLast}
             onClear={props.onClear}

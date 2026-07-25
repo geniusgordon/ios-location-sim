@@ -75,6 +75,25 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "PaceOut": {
+        "description": "A selectable pace. Carries `speed_mps` so the GUI can show what picking\nit actually means without a second request or a hardcoded copy of the\nbuilt-in speeds.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "speed_mps": {
+            "title": "Speed Mps",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "speed_mps"
+        ],
+        "title": "PaceOut",
+        "type": "object"
+      },
       "PinRequest": {
         "description": "A single point to hold the device at \u2014 the GUI's `ios-loc set`.",
         "properties": {
@@ -166,6 +185,11 @@
       },
       "PresetIn": {
         "properties": {
+          "costing": {
+            "default": "pedestrian",
+            "title": "Costing",
+            "type": "string"
+          },
           "loop": {
             "default": false,
             "title": "Loop",
@@ -176,9 +200,9 @@
             "title": "Name",
             "type": "string"
           },
-          "profile": {
+          "pace": {
             "default": "walk",
-            "title": "Profile",
+            "title": "Pace",
             "type": "string"
           },
           "waypoints": {
@@ -209,6 +233,10 @@
       },
       "PresetOut": {
         "properties": {
+          "costing": {
+            "title": "Costing",
+            "type": "string"
+          },
           "loop": {
             "title": "Loop",
             "type": "boolean"
@@ -217,8 +245,8 @@
             "title": "Name",
             "type": "string"
           },
-          "profile": {
-            "title": "Profile",
+          "pace": {
+            "title": "Pace",
             "type": "string"
           },
           "waypoints": {
@@ -235,8 +263,9 @@
         "required": [
           "name",
           "waypoints",
-          "profile",
-          "loop"
+          "pace",
+          "loop",
+          "costing"
         ],
         "title": "PresetOut",
         "type": "object"
@@ -247,24 +276,24 @@
             "title": "Offline",
             "type": "boolean"
           },
+          "paces": {
+            "items": {
+              "$ref": "#/components/schemas/PaceOut"
+            },
+            "title": "Paces",
+            "type": "array"
+          },
           "presets": {
             "items": {
               "$ref": "#/components/schemas/PresetOut"
             },
             "title": "Presets",
             "type": "array"
-          },
-          "profiles": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Profiles",
-            "type": "array"
           }
         },
         "required": [
           "presets",
-          "profiles",
+          "paces",
           "offline"
         ],
         "title": "PresetsListOut",
@@ -368,6 +397,17 @@
             ],
             "title": "Loop"
           },
+          "pace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pace"
+          },
           "preset": {
             "anyOf": [
               {
@@ -378,17 +418,6 @@
               }
             ],
             "title": "Preset"
-          },
-          "profile": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Profile"
           },
           "scatter_m": {
             "default": 3.0,
@@ -561,6 +590,17 @@
             "title": "Loop",
             "type": "boolean"
           },
+          "pace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pace"
+          },
           "preset_name": {
             "anyOf": [
               {
@@ -571,17 +611,6 @@
               }
             ],
             "title": "Preset Name"
-          },
-          "profile": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Profile"
           },
           "route": {
             "items": {

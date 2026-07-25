@@ -28,10 +28,10 @@ afterEach(() => {
 
 describe("request shaping", () => {
   it("GETs /api/presets and returns the parsed body", async () => {
-    const f = stub(200, { presets: [], profiles: ["walk"], offline: false })
+    const f = stub(200, { presets: [], paces: [{ name: "walk", speed_mps: 1.3 }], offline: false })
     await expect(getPresets()).resolves.toEqual({
       presets: [],
-      profiles: ["walk"],
+      paces: [{ name: "walk", speed_mps: 1.3 }],
       offline: false,
     })
     expect((f.mock.calls[0] as unknown[])[0]).toBe("/api/presets")

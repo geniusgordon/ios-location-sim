@@ -29,6 +29,7 @@ from ios_loc.session import _PROGRAMMING_ERRORS
 from ios_loc.web.device import probe_device
 from ios_loc.web.models import (
     DeviceStatus,
+    PaceOut,
     PinRequest,
     PlaceIn,
     PlaceOut,
@@ -90,10 +91,10 @@ def create_app(
 
     @app.get("/api/presets", response_model=PresetsListOut)
     def list_presets() -> PresetsListOut:
-        profiles, presets = _config()
+        paces, presets = _config()
         return PresetsListOut(
             presets=[PresetOut.from_preset(p) for p in sorted(presets.values(), key=lambda p: p.name)],
-            profiles=sorted(profiles),
+            paces=[PaceOut.from_pace(paces[name]) for name in sorted(paces)],
             offline=offline,
         )
 
@@ -102,8 +103,9 @@ def create_app(
         preset = Preset(
             name=body.name,
             waypoints=[(lat, lon) for lat, lon in body.waypoints],
-            profile=body.profile,
+            pace=body.pace,
             loop=body.loop,
+            costing=body.costing,
         )
         try:
             save_preset(config_path, preset)
@@ -183,21 +185,21 @@ def create_app(
 
     @app.post("/api/walk", response_model=WalkStatus)
     async def start_walk(body: StartRequest) -> WalkStatus:
-        profiles, presets = _config()
+        paces, presets = _config()
         try:
             resolved = resolve_walk(
                 preset=body.preset,
                 waypoints=body.waypoints,
-                profile=body.profile,
+                pace=body.pace,
                 speed=body.speed,
                 costing=body.costing,
                 loop=body.loop,
-                profiles=profiles,
+                paces=paces,
                 presets=presets,
             )
         except ConfigError as exc:
             # An unknown preset name is a 404 (the named thing does not exist);
-            # everything else resolve_walk rejects -- an unknown profile, a bad
+            # everything else resolve_walk rejects -- an unknown pace, a bad
             # request shape, an out-of-range coordinate, an over-ceiling speed
             # -- is the client's fault, a 400.
             detail = str(exc)
@@ -209,7 +211,7 @@ def create_app(
         spec = StartSpec(
             waypoints=resolved.waypoints,
             costing=resolved.costing,
-            profile=resolved.profile,
+            pace=resolved.pace,
             loop=resolved.loop,
             duration_s=body.duration_s,
             scatter_m=body.scatter_m,

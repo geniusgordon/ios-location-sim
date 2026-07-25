@@ -145,32 +145,34 @@ def clear(udid: str = typer.Option(None, help="Target a specific device UDID."))
 def presets_list(
     config: pathlib.Path = typer.Option(None, help="Path to config.toml."),
 ) -> None:
-    """List configured speed profiles and named routes."""
+    """List configured paces and named routes."""
     try:
-        profiles, presets = load_config(config)
+        paces, presets = load_config(config)
     except ConfigError as exc:
         _fail(f"config error: {exc}")
-    typer.echo("profiles:")
-    for name, profile in sorted(profiles.items()):
-        typer.echo(
-            f"  {name:<10} {profile.speed:>5.2f} m/s "
-            f"({profile.speed * 3.6:>4.1f} km/h)  costing={profile.costing}"
-        )
+    typer.echo("paces:")
+    for name, pace in sorted(paces.items()):
+        typer.echo(f"  {name:<10} {pace.speed:>5.2f} m/s ({pace.speed * 3.6:>4.1f} km/h)")
     typer.echo("presets:")
     if not presets:
         typer.echo("  (none)")
     for name, preset in sorted(presets.items()):
         loop = " loop" if preset.loop else ""
-        typer.echo(f"  {name:<10} {len(preset.waypoints)} waypoints  profile={preset.profile}{loop}")
+        typer.echo(
+            f"  {name:<10} {len(preset.waypoints)} waypoints  "
+            f"pace={preset.pace}  costing={preset.costing}{loop}"
+        )
 
 
 @app.command()
 def walk(
     preset: str = typer.Argument(None, help="Name of a preset from config.toml."),
     via: list[str] = typer.Option(None, "--via", help="Waypoint as 'lat,lon'. Repeatable."),
-    profile: str = typer.Option(None, help="Speed profile name, e.g. walk or bike."),
-    speed: float = typer.Option(None, help="Override the profile's base speed, m/s."),
-    costing: str = typer.Option(None, help="Override the Valhalla costing model."),
+    pace: str = typer.Option(None, help="Pace name, e.g. walk or bike. Speed only."),
+    speed: float = typer.Option(None, help="Override the pace's base speed, m/s."),
+    costing: str = typer.Option(
+        None, help="How to plan the route: pedestrian, bicycle, auto. Independent of --pace."
+    ),
     loop: bool = typer.Option(
         None, "--loop/--no-loop", help="Repeat the route (overrides a preset's setting)."
     ),
@@ -186,7 +188,7 @@ def walk(
 ) -> None:
     """Walk or cycle a route, holding the simulated location for the whole run."""
     try:
-        profiles, presets = load_config(config)
+        paces, presets = load_config(config)
     except ConfigError as exc:
         _fail(f"config error: {exc}")
 
@@ -215,11 +217,11 @@ def walk(
         resolved = resolve_walk(
             preset=preset,
             waypoints=parsed_via,
-            profile=profile,
+            pace=pace,
             speed=speed,
             costing=costing,
             loop=loop,
-            profiles=profiles,
+            paces=paces,
             presets=presets,
         )
     except ConfigError as exc:
@@ -231,7 +233,7 @@ def walk(
         _fail(message)
 
     waypoints = resolved.waypoints
-    selected = resolved.profile
+    selected = resolved.pace
     loop = resolved.loop
 
     duration_s = None
@@ -264,8 +266,8 @@ def walk(
 
     walker = Walker(path, selected, loop=loop, rng=random.Random(), scatter_m=scatter)
     typer.echo(
-        f"route: {path.length_m / 1000:.2f} km, profile={selected.name} "
-        f"({selected.speed * 3.6:.1f} km/h), loop={loop}"
+        f"route: {path.length_m / 1000:.2f} km, pace={selected.name} "
+        f"({selected.speed * 3.6:.1f} km/h), costing={resolved.costing}, loop={loop}"
     )
 
     async def _run() -> None:

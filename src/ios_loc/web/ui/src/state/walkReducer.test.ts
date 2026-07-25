@@ -25,7 +25,7 @@ const status: WalkStatus = {
   route: [[25, 121], [25.01, 121]],
   trail: [fix(1), fix(2), fix(3)],
   preset_name: "park",
-  profile: "walk",
+  pace: "walk",
   loop: true,
   length_m: 1200,
 }

@@ -50,11 +50,15 @@ def context(tmp_path):
         yield client, config, route_client, session
 
 
-def test_presets_start_empty_and_list_built_in_profiles(context):
+def test_presets_start_empty_and_list_built_in_paces(context):
     client, *_ = context
     body = client.get("/api/presets").json()
     assert body["presets"] == []
-    assert "walk" in body["profiles"] and "bike" in body["profiles"]
+    # Each pace carries its speed so the GUI can show what picking it means
+    # without hardcoding a second copy of the built-in numbers.
+    assert {p["name"] for p in body["paces"]} >= {"walk", "bike"}
+    by_name = {p["name"]: p["speed_mps"] for p in body["paces"]}
+    assert by_name["bike"] > by_name["walk"] > 0
     assert body["offline"] is False
 
 
@@ -71,11 +75,11 @@ def test_saving_a_preset_persists_it_to_the_config_file(context):
     assert presets["home"].loop is True
 
 
-def test_saving_a_preset_with_an_unknown_profile_is_a_400(context):
+def test_saving_a_preset_with_an_unknown_pace_is_a_400(context):
     client, *_ = context
     response = client.post(
         "/api/presets",
-        json={"name": "x", "waypoints": [[25.0, 121.0], [25.1, 121.1]], "profile": "nope"},
+        json={"name": "x", "waypoints": [[25.0, 121.0], [25.1, 121.1]], "pace": "nope"},
     )
     assert response.status_code == 400
     assert "nope" in response.json()["detail"]

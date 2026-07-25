@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { PanelLeftOpen } from "lucide-react"
-import type { LatLon, Place, Preset } from "@/api/types"
+import type { LatLon, Pace, Place, Preset } from "@/api/types"
 import { deletePlace, deletePreset, errorText, getPlaces, getPresets, pinLocation, stopWalk } from "@/api/client"
 import MapView from "@/components/MapView"
 import Sidebar, { type SidebarTab } from "@/components/Sidebar"
@@ -37,7 +37,7 @@ export default function App() {
   // The last point the device was pinned at, from either pin path. Gates the
   // "save this place" form: there is never a save button with nothing to save.
   const [lastPin, setLastPin] = useState<LatLon | null>(null)
-  const [profiles, setProfiles] = useState<string[]>([])
+  const [paces, setPaces] = useState<Pace[]>([])
   const [offline, setOffline] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -89,7 +89,7 @@ export default function App() {
       .then((data) => {
         if (mine !== loadId.current) return
         setPresets(data.presets)
-        setProfiles(data.profiles)
+        setPaces(data.paces)
         setOffline(data.offline)
       })
       .catch((error: unknown) => {
@@ -208,7 +208,7 @@ export default function App() {
           routePending={preview.pending}
           routeError={preview.error}
           loadError={loadError}
-          profiles={profiles}
+          paces={paces}
           offline={offline}
           onRemoveLast={() => {
             setShowSummary(false)

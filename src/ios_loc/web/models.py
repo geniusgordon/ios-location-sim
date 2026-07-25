@@ -7,7 +7,7 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 from ios_loc.path import Coord
-from ios_loc.presets import Place, Preset
+from ios_loc.presets import DEFAULT_COSTING, Pace, Place, Preset
 from ios_loc.runner import WalkStats
 from ios_loc.walker import Fix
 
@@ -63,30 +63,46 @@ class StatsOut(BaseModel):
 class PresetOut(BaseModel):
     name: str
     waypoints: list[list[float]]
-    profile: str
+    pace: str
     loop: bool
+    costing: str
 
     @classmethod
     def from_preset(cls, preset: Preset) -> "PresetOut":
         return cls(
             name=preset.name,
             waypoints=[[lat, lon] for lat, lon in preset.waypoints],
-            profile=preset.profile,
+            pace=preset.pace,
             loop=preset.loop,
+            costing=preset.costing,
         )
+
+
+class PaceOut(BaseModel):
+    """A selectable pace. Carries `speed_mps` so the GUI can show what picking
+    it actually means without a second request or a hardcoded copy of the
+    built-in speeds."""
+
+    name: str
+    speed_mps: float
+
+    @classmethod
+    def from_pace(cls, pace: Pace) -> "PaceOut":
+        return cls(name=pace.name, speed_mps=pace.speed)
 
 
 class PresetsListOut(BaseModel):
     presets: list[PresetOut]
-    profiles: list[str]
+    paces: list[PaceOut]
     offline: bool
 
 
 class PresetIn(BaseModel):
     name: str = Field(min_length=1)
     waypoints: list[Coord] = Field(min_length=2)
-    profile: str = "walk"
+    pace: str = "walk"
     loop: bool = False
+    costing: str = DEFAULT_COSTING
 
 
 class PlaceOut(BaseModel):
@@ -109,7 +125,7 @@ class PlaceIn(BaseModel):
 
 class RouteRequest(BaseModel):
     waypoints: list[Coord] = Field(min_length=2)
-    costing: str = "pedestrian"
+    costing: str = DEFAULT_COSTING
 
 
 class RouteResponse(BaseModel):
@@ -123,8 +139,10 @@ class StartRequest(BaseModel):
 
     preset: str | None = None
     waypoints: list[Coord] | None = None
-    profile: str | None = None
+    pace: str | None = None
     speed: float | None = None
+    # Independent of `pace`. None means "use the preset's saved costing", or
+    # DEFAULT_COSTING for an ad-hoc route -- never anything derived from the pace.
     costing: str | None = None
     # None means "inherit the preset's setting"; the ad-hoc branch coerces it.
     loop: bool | None = None
@@ -156,6 +174,6 @@ class WalkStatus(BaseModel):
     route: list[list[float]] = Field(default_factory=list)
     trail: list[FixOut] = Field(default_factory=list)
     preset_name: str | None = None
-    profile: str | None = None
+    pace: str | None = None
     loop: bool = False
     length_m: float | None = None

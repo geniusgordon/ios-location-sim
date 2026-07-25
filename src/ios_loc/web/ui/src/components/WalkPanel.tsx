@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { MapPin, Play, RefreshCw, Save, Square, Trash2, Undo2 } from "lucide-react"
-import type { Preset, WalkStateName } from "@/api/types"
+import type { Pace, Preset, WalkStateName } from "@/api/types"
 import { errorText, savePreset, startWalk, stopWalk } from "@/api/client"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -27,7 +27,7 @@ import { Switch } from "@/components/ui/switch"
 import LibraryRow from "@/components/LibraryRow"
 import { COSTINGS } from "@/lib/costings"
 import type { DraftRoute, DraftSettings } from "@/lib/draft"
-import { formatDistance, formatDuration, formatSpeed } from "@/lib/format"
+import { formatDistance, formatDuration, formatPaceSpeed, formatSpeed } from "@/lib/format"
 import { canStart, startBody } from "@/lib/startBody"
 import { canStop, showsLiveDock } from "@/state/walkReducer"
 import { useWalkMeta, useWalkTelemetry } from "@/hooks/useWalkStream"
@@ -140,7 +140,7 @@ export interface WalkPanelProps {
   routeError: string | null
   /** A failed /api/presets — a config problem, kept separate from routeError. */
   loadError: string | null
-  profiles: string[]
+  paces: Pace[]
   offline: boolean
   onRemoveLast(): void
   onClear(): void
@@ -196,10 +196,13 @@ export default function WalkPanel(props: WalkPanelProps) {
       await savePreset({
         name: saveName.trim(),
         waypoints: props.route.waypoints,
-        // A saved route owns a concrete profile; the start-time "inherit the
+        // A saved route owns a concrete pace; the start-time "inherit the
         // default" null has no meaning in the config file.
-        profile: props.settings.profile ?? "walk",
+        pace: props.settings.pace ?? "walk",
         loop: props.settings.loop,
+        // Saved with the route because it describes the geometry: reloading it
+        // under a different Routing mode would draw a different polyline.
+        costing: props.settings.costing,
       })
       setSaveOpen(false)
       props.onSaved(saveName.trim())
@@ -211,6 +214,12 @@ export default function WalkPanel(props: WalkPanelProps) {
   }
 
   const empty = props.route.waypoints.length === 0
+
+  // `pace: null` means "inherit the default", which the backend resolves to
+  // `walk` -- so show walk's speed rather than nothing, matching the
+  // placeholder the closed select already displays. Falls back to null only if
+  // the config failed to load and the list is empty.
+  const selectedPace = props.paces.find((p) => p.name === (props.settings.pace ?? "walk")) ?? null
 
   return (
     <div className="flex h-full flex-col">
@@ -284,22 +293,35 @@ export default function WalkPanel(props: WalkPanelProps) {
 
         {/* Settings */}
         <div className="grid gap-2">
-          <Label htmlFor="opt-profile">Profile</Label>
+          <Label htmlFor="opt-pace">Pace</Label>
           <Select
-            value={props.settings.profile ?? ""}
-            onValueChange={(value) => set("profile", value === "" ? null : value)}
+            value={props.settings.pace ?? ""}
+            onValueChange={(value) => set("pace", value === "" ? null : value)}
           >
-            <SelectTrigger id="opt-profile">
+            <SelectTrigger id="opt-pace">
               <SelectValue placeholder="walk" />
             </SelectTrigger>
             <SelectContent>
-              {props.profiles.map((p) => (
-                <SelectItem key={p} value={p}>
-                  {p}
+              {props.paces.map((p) => (
+                <SelectItem key={p.name} value={p.name}>
+                  <span className="flex w-full items-baseline justify-between gap-3">
+                    <span>{p.name}</span>
+                    <span className="text-muted-foreground font-mono text-xs tabular-nums">
+                      {formatSpeed(p.speed_mps)}
+                    </span>
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {/* The selected pace's speed, spelled out under the closed select --
+              the value inside a collapsed SelectValue is the name alone, so
+              without this the speed is only visible while the menu is open. */}
+          <p className="text-muted-foreground text-xs">
+            {selectedPace
+              ? formatPaceSpeed(selectedPace.speed_mps)
+              : "Speed only — it does not affect how the route is planned."}
+          </p>
         </div>
 
         <div className="grid gap-2">
@@ -321,6 +343,9 @@ export default function WalkPanel(props: WalkPanelProps) {
               ))}
             </SelectContent>
           </Select>
+          <p className="text-muted-foreground text-xs">
+            Which paths the route follows. Independent of the pace.
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -403,9 +428,9 @@ export default function WalkPanel(props: WalkPanelProps) {
                 key={preset.name}
                 icon={<MapPin className="text-muted-foreground size-4 shrink-0" />}
                 title={preset.name}
-                subtitle={`${preset.waypoints.length} waypoints · ${preset.profile}${
-                  preset.loop ? " · loop" : ""
-                }`}
+                subtitle={`${preset.waypoints.length} waypoints · ${preset.pace} · ${
+                  preset.costing
+                }${preset.loop ? " · loop" : ""}`}
                 selected={props.route.name === preset.name}
                 onSelect={() => props.onSelectPreset(preset)}
                 onDelete={() => props.onDeletePreset(preset.name)}

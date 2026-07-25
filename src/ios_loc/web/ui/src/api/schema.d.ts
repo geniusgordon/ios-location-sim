@@ -178,6 +178,18 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * PaceOut
+         * @description A selectable pace. Carries `speed_mps` so the GUI can show what picking
+         *     it actually means without a second request or a hardcoded copy of the
+         *     built-in speeds.
+         */
+        PaceOut: {
+            /** Name */
+            name: string;
+            /** Speed Mps */
+            speed_mps: number;
+        };
+        /**
          * PinRequest
          * @description A single point to hold the device at — the GUI's `ios-loc set`.
          */
@@ -212,6 +224,11 @@ export interface components {
         /** PresetIn */
         PresetIn: {
             /**
+             * Costing
+             * @default pedestrian
+             */
+            costing: string;
+            /**
              * Loop
              * @default false
              */
@@ -219,10 +236,10 @@ export interface components {
             /** Name */
             name: string;
             /**
-             * Profile
+             * Pace
              * @default walk
              */
-            profile: string;
+            pace: string;
             /** Waypoints */
             waypoints: [
                 number,
@@ -231,12 +248,14 @@ export interface components {
         };
         /** PresetOut */
         PresetOut: {
+            /** Costing */
+            costing: string;
             /** Loop */
             loop: boolean;
             /** Name */
             name: string;
-            /** Profile */
-            profile: string;
+            /** Pace */
+            pace: string;
             /** Waypoints */
             waypoints: number[][];
         };
@@ -244,10 +263,10 @@ export interface components {
         PresetsListOut: {
             /** Offline */
             offline: boolean;
+            /** Paces */
+            paces: components["schemas"]["PaceOut"][];
             /** Presets */
             presets: components["schemas"]["PresetOut"][];
-            /** Profiles */
-            profiles: string[];
         };
         /** RouteRequest */
         RouteRequest: {
@@ -282,10 +301,10 @@ export interface components {
             duration_s?: number | null;
             /** Loop */
             loop?: boolean | null;
+            /** Pace */
+            pace?: string | null;
             /** Preset */
             preset?: string | null;
-            /** Profile */
-            profile?: string | null;
             /**
              * Scatter M
              * @default 3
@@ -342,10 +361,10 @@ export interface components {
              * @default false
              */
             loop: boolean;
+            /** Pace */
+            pace?: string | null;
             /** Preset Name */
             preset_name?: string | null;
-            /** Profile */
-            profile?: string | null;
             /** Route */
             route?: number[][];
             state: components["schemas"]["WalkState"];

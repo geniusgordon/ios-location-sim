@@ -14,11 +14,14 @@ export function startBody(route: DraftRoute, settings: DraftSettings): StartRequ
     // Exactly one of these -- the API rejects both and neither.
     preset: route.name,
     waypoints: named ? null : route.waypoints,
-    profile: settings.profile,
+    pace: settings.pace,
     speed: null,
-    // A named route carries its own costing server-side; sending one would
-    // silently re-route it.
-    costing: named ? null : settings.costing,
+    // Always sent, named route or not: "Routing mode" is the one thing that
+    // decides costing, and it is never inferred from the pace. Loading a preset
+    // seeds this select from that preset's saved costing (`loadPreset`), so
+    // sending it back is a no-op unless the user deliberately changed it --
+    // and then re-planning under the new mode is exactly what they asked for.
+    costing: settings.costing,
     loop: settings.loop,
     duration_s: Number.isFinite(minutes) && minutes > 0 ? minutes * 60 : null,
     scatter_m: Number.isFinite(scatter) ? Math.min(100, Math.max(0, scatter)) : 3,

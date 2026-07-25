@@ -12,12 +12,15 @@ export interface DraftRoute {
 }
 
 /**
- * Every knob a start needs, held once and sticky across draws. `profile: null`
+ * Every knob a start needs, held once and sticky across draws. `pace: null`
  * and a blank `durationMin` both mean "inherit the default", which the backend
  * models as null -- they must never be sent as 0.
+ *
+ * `pace` and `costing` are independent by design: pace is how fast, costing
+ * ("Routing mode") is which way. Nothing here may derive one from the other.
  */
 export interface DraftSettings {
-  profile: string | null
+  pace: string | null
   costing: string
   loop: boolean
   durationMin: string
@@ -27,7 +30,7 @@ export interface DraftSettings {
 export const emptyRoute: DraftRoute = { waypoints: [], name: null }
 
 export const defaultSettings: DraftSettings = {
-  profile: null,
+  pace: null,
   costing: "pedestrian",
   loop: false,
   durationMin: "",
@@ -60,8 +63,10 @@ export function clearRoute(): DraftRoute {
 }
 
 /**
- * A saved route owns its profile and loop; everything else (costing, duration,
- * scatter) is the user's current session preference and is left alone.
+ * A saved route owns its pace, loop and costing -- costing included because it
+ * describes the geometry that was saved, so loading a route must show the
+ * Routing mode it was planned with rather than whatever the last draw used.
+ * Duration and scatter stay as the user's current session preference.
  */
 export function loadPreset(
   preset: Preset,
@@ -69,6 +74,11 @@ export function loadPreset(
 ): { route: DraftRoute; settings: DraftSettings } {
   return {
     route: { waypoints: preset.waypoints as LatLon[], name: preset.name },
-    settings: { ...settings, profile: preset.profile, loop: preset.loop },
+    settings: {
+      ...settings,
+      pace: preset.pace,
+      loop: preset.loop,
+      costing: preset.costing,
+    },
   }
 }

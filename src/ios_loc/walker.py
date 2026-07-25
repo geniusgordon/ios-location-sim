@@ -13,7 +13,7 @@ import random
 from dataclasses import dataclass
 
 from ios_loc.path import Coord, Path
-from ios_loc.presets import MAX_SPEED_MPS, Profile
+from ios_loc.presets import MAX_SPEED_MPS, Pace
 
 _METRES_PER_DEGREE_LAT = 111_320.0
 
@@ -31,7 +31,7 @@ class Fix:
 
 
 class Walker:
-    """Advances a simulated position along a `Path` according to a `Profile`.
+    """Advances a simulated position along a `Path` according to a `Pace`.
 
     Two behaviours are deliberate and load-bearing, not oversights:
 
@@ -50,14 +50,14 @@ class Walker:
     def __init__(
         self,
         path: Path,
-        profile: Profile,
+        pace: Pace,
         *,
         loop: bool = False,
         rng: random.Random | None = None,
         scatter_m: float = 3.0,
     ) -> None:
         self.path = path
-        self.profile = profile
+        self.pace = pace
         self.loop = loop
         self.scatter_m = scatter_m
         self._rng = rng if rng is not None else random.Random()
@@ -112,9 +112,9 @@ class Walker:
             # `moving_s`. The previous linear form (rate * dt) exceeds 1.0 for a
             # large dt and forced a pause on every such tick, discarding the
             # whole interval's distance.
-            rate_per_s = self.profile.pause_per_min / 60.0
+            rate_per_s = self.pace.pause_per_min / 60.0
             if self._rng.random() < 1.0 - math.exp(-rate_per_s * moving_s):
-                pause = self._rng.uniform(self.profile.pause_min_s, self.profile.pause_max_s)
+                pause = self._rng.uniform(self.pace.pause_min_s, self.pace.pause_max_s)
                 consumed = min(pause, moving_s)
                 self._pause_remaining_s = pause - consumed
                 moving_s -= consumed
@@ -122,7 +122,7 @@ class Walker:
         if moving_s <= 0.0:
             return 0.0
 
-        speed = self.profile.speed * self._rng.gauss(1.0, self.profile.jitter)
+        speed = self.pace.speed * self._rng.gauss(1.0, self.pace.jitter)
         # Clamp against the ceiling using the *jittered* value, not the base.
         speed = min(max(speed, 0.0), MAX_SPEED_MPS)
         return speed * (moving_s / dt)

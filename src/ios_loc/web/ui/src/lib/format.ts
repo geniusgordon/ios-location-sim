@@ -18,3 +18,12 @@ export function formatDuration(seconds: number): string {
 export function formatSpeed(metresPerSecond: number): string {
   return `${(metresPerSecond * 3.6).toFixed(1)} km/h`
 }
+
+/**
+ * A pace's speed, both ways round: km/h is how the ceiling is stated and how
+ * people read walking speed, m/s is what config.toml and `--speed` take, so
+ * showing only one leaves the user converting by hand to edit their config.
+ */
+export function formatPaceSpeed(metresPerSecond: number): string {
+  return `${(metresPerSecond * 3.6).toFixed(1)} km/h · ${metresPerSecond.toFixed(2)} m/s`
+}

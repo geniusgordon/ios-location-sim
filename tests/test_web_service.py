@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from ios_loc.presets import DEFAULT_PROFILES
+from ios_loc.presets import DEFAULT_PACES
 from ios_loc.session import SessionLost
 from ios_loc.web.models import WalkState, WalkStatus
 from ios_loc.web.service import StartSpec, WalkAlreadyRunning, WalkService
@@ -28,7 +28,7 @@ def spec(**kwargs):
     return StartSpec(
         waypoints=[SQUARE[0], SQUARE[-1]],
         costing="pedestrian",
-        profile=DEFAULT_PROFILES["walk"],
+        pace=DEFAULT_PACES["walk"],
         **kwargs,
     )
 

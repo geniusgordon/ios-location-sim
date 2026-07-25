@@ -17,11 +17,11 @@ once in `src/ios_loc/web/ui/`.
 
 ```bash
 uv sync                              # install
-uv run pytest -q                     # full suite (249 tests, ~2s, no device/network needed)
+uv run pytest -q                     # full suite (262 tests, ~2s, no device/network needed)
 uv run pytest tests/test_walker.py::test_name -q   # single test
 uv run ios-loc --help
 uv run python scripts/export_openapi.py            # regenerate src/ios_loc/web/ui/api-schema.json
-cd src/ios_loc/web/ui && pnpm test run   # frontend pure-logic tests (94)
+cd src/ios_loc/web/ui && pnpm test run   # frontend pure-logic tests (97)
 cd src/ios_loc/web/ui && pnpm build      # (re)build the bundle in web/static/ — required by `gui`
 ```
 
@@ -48,7 +48,7 @@ run can be tested in milliseconds.
 | --- | --- | --- |
 | `path.py` | Pure polyline geometry, cumulative-distance interpolation | pymobiledevice3, requests, asyncio |
 | `walker.py` | Movement model: `advance(dt)` → `Fix`. Pure, synchronous, never sleeps, no I/O | anything doing I/O |
-| `presets.py` | `Profile` / `Preset` dataclasses, TOML config layered over built-in defaults | — |
+| `presets.py` | `Pace` / `Preset` / `Place` dataclasses, TOML config layered over built-in defaults | — |
 | `routing.py` | Valhalla HTTP client + polyline decode + disk cache | — |
 | `session.py` | **The only module that can fail because of hardware.** All reconnect/backoff logic | — |
 | `discovery.py` | tunneld lookup → `LocationSimulation` async context manager | — |
@@ -69,7 +69,7 @@ TypeScript types from this file rather than hand-copying the API shape.
 These were each fixed deliberately; re-breaking them is silent, not loud.
 
 - **20 km/h ceiling (`MAX_SPEED_MPS = 5.56`).** Location-based games stop crediting
-  distance above it, so an over-speed run produces nothing. Enforced in `Profile.__post_init__`
+  distance above it, so an over-speed run produces nothing. Enforced in `Pace.__post_init__`
   and again per-tick in `Walker._tick_speed` against the *jittered* speed, not the base.
 - **An outage costs distance; it never causes a jump.** If `session.set()` blocks on a
   reconnect, `run_walk` resets its deadline to now instead of firing a catch-up burst
@@ -141,12 +141,25 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   device at the tapped point; `walk` → append a waypoint. One tap handler
   branching on tab; a second map-click path is how the two modes start fighting
   over the same gesture.
+- **A pace is speed; a costing is the route. They never feed each other.**
+  `Pace` carries no costing at all, and `resolve_walk` resolves the two
+  independently: an explicit `costing` wins, else the preset's saved `costing`,
+  else `DEFAULT_COSTING`. Let a pace supply a costing again and selecting
+  `bike` for its speed silently re-plans a footpath onto cycleways — a wrong
+  route, with no error anywhere. `tests/test_resolve_walk.py` pins
+  this; `test_a_pace_carries_no_costing` fails the moment the field comes back.
+- **A preset owns its costing, because the costing describes its geometry.**
+  Re-planning a saved route under a different costing yields a different
+  polyline than the one that was drawn and saved, so `Preset.costing` round
+  trips through the config file and `loadPreset` seeds the GUI's Routing mode
+  select from it.
 - **One `StartRequest` builder.** `web/ui/src/lib/startBody.ts` is the only
   place a start body is constructed. Two inline copies (the quick bar and the
-  start form) is how the two paths silently drifted apart — a named route must
-  send `preset` with `waypoints`/`costing` null, and an edited one must send
-  the reverse. `DraftRoute.name` is cleared by every edit for the same reason:
-  starting by name after an edit runs the OLD route on the phone.
+  start form) is how the two paths silently drifted apart — a named route sends
+  `preset` with `waypoints` null, an edited one sends the reverse, and BOTH
+  always send `costing` (Routing mode is the only thing that decides it).
+  `DraftRoute.name` is cleared by every edit for the same reason: starting by
+  name after an edit runs the OLD route on the phone.
 - **Frontend tests are pure-logic only** (`vitest.config.ts` pins `environment:
   "node"`, `include: ["src/**/*.test.ts"]`). No jsdom, no component rendering —
   so the suite cannot catch a re-modalled sidebar, a re-rendering map, or any
@@ -163,15 +176,16 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
 - **Each config writer regenerates only its own table kind.** `_write_tables(path,
   "presets" | "places", …)` strips and re-renders one kind and preserves the rest
   byte for byte — a place save must never disturb `[presets.*]`, and neither may
-  touch a hand-written `[profiles.*]` or its comments. `load_config` reads only
-  `profiles` and `presets` and ignores unknown top-level tables, which is what
+  touch a hand-written `[paces.*]` or its comments. `load_config` reads only
+  `paces` and `presets` and ignores unknown top-level tables, which is what
   lets `[places.*]` coexist without a loader change.
 
 ## Config
 
-`~/.config/ios-loc/config.toml` (override with `--config`). `[profiles.<name>]` layers
-over built-in `walk` / `bike`; a brand-new profile name inherits `walk`'s defaults for
-omitted fields. `[presets.<name>]` needs `waypoints`. See README.md for examples.
+`~/.config/ios-loc/config.toml` (override with `--config`). `[paces.<name>]` layers
+over built-in `walk` / `bike`; a brand-new pace name inherits `walk`'s defaults for
+omitted fields. A pace has no `costing` — that lives on the route. `[presets.<name>]`
+needs `waypoints`, and may set `pace`, `costing` and `loop`. See README.md for examples.
 
 Routes are cached to `~/.cache/ios-loc/routes` (atomic writes, corrupt entries
 discarded). `--offline` fails fast rather than hitting the network — that is the mode

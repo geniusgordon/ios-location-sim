@@ -52,25 +52,41 @@ describe("the name", () => {
     const preset = {
       name: "riverside",
       waypoints: [[1, 1], [2, 2]],
-      profile: "bike",
+      pace: "bike",
       loop: true,
+      costing: "bicycle",
     } as unknown as Preset
     const result = loadPreset(preset, defaultSettings)
     expect(result.route).toEqual({ waypoints: [[1, 1], [2, 2]], name: "riverside" })
-    expect(result.settings.profile).toBe("bike")
+    expect(result.settings.pace).toBe("bike")
     expect(result.settings.loop).toBe(true)
+  })
+
+  // The saved costing describes the saved geometry, so it must win over
+  // whatever the previous draw happened to leave in the select.
+  it("adopts the preset's costing", () => {
+    const preset = {
+      name: "riverside",
+      waypoints: [[1, 1], [2, 2]],
+      pace: "walk",
+      loop: false,
+      costing: "auto",
+    } as unknown as Preset
+    const result = loadPreset(preset, { ...defaultSettings, costing: "bicycle" })
+    expect(result.settings.costing).toBe("auto")
   })
 
   it("keeps settings the preset does not own", () => {
     const preset = {
       name: "x",
       waypoints: [[1, 1], [2, 2]],
-      profile: "walk",
+      pace: "walk",
       loop: false,
+      costing: "pedestrian",
     } as unknown as Preset
-    const settings = { ...defaultSettings, costing: "bicycle", scatterM: "9" }
+    const settings = { ...defaultSettings, durationMin: "45", scatterM: "9" }
     const result = loadPreset(preset, settings)
-    expect(result.settings.costing).toBe("bicycle")
+    expect(result.settings.durationMin).toBe("45")
     expect(result.settings.scatterM).toBe("9")
   })
 })

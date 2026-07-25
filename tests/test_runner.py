@@ -3,7 +3,7 @@ import pytest
 from contextlib import asynccontextmanager
 
 from ios_loc.path import Path
-from ios_loc.presets import DEFAULT_PROFILES
+from ios_loc.presets import DEFAULT_PACES
 from ios_loc.runner import run_walk
 from ios_loc.session import LocationSession
 from ios_loc.walker import Walker
@@ -54,7 +54,7 @@ def make_session(sim, sleep, clock=None):
 
 def make_walker(loop=True):
     path = Path([(0.0, 0.0), (0.01, 0.0)])
-    return Walker(path, DEFAULT_PROFILES["walk"], loop=loop, rng=random.Random(0), scatter_m=0.0)
+    return Walker(path, DEFAULT_PACES["walk"], loop=loop, rng=random.Random(0), scatter_m=0.0)
 
 
 async def test_runs_for_the_requested_duration():
@@ -174,7 +174,7 @@ async def test_stops_when_a_non_looping_walker_finishes():
     await session.start()
     path = Path([(0.0, 0.0), (0.0005, 0.0)])  # ~55 m
     walker = Walker(
-        path, DEFAULT_PROFILES["walk"], loop=False, rng=random.Random(0), scatter_m=0.0
+        path, DEFAULT_PACES["walk"], loop=False, rng=random.Random(0), scatter_m=0.0
     )
     stats = await run_walk(walker, session, duration_s=None, clock=clock, sleep=clock.sleep)
     assert walker.finished

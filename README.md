@@ -93,8 +93,8 @@ ios-loc doctor
 # Walk a route, looping, for three hours
 uv run ios-loc walk --via 25.033,121.565 --via 25.038,121.568 --loop --duration 3h
 
-# Cycle instead (also switches routing to bicycle paths)
-uv run ios-loc walk --via 25.033,121.565 --via 25.038,121.568 --profile bike --loop
+# Cycle: bike speed AND bicycle routing — two independent flags
+uv run ios-loc walk --via 25.033,121.565 --via 25.038,121.568 --pace bike --costing bicycle --loop
 
 # Use a named preset
 uv run ios-loc walk home-loop
@@ -107,7 +107,11 @@ uv run ios-loc set 25.0330 121.5654
 uv run ios-loc clear
 ```
 
-Other `walk` options worth knowing: `--speed` (m/s, overrides the profile),
+`--pace` sets speed only and `--costing` sets how the route is planned
+(`pedestrian`, `bicycle`, `auto`); neither one implies the other, so bike speed
+along a footpath is a `--pace bike` with the costing left alone.
+
+Other `walk` options worth knowing: `--speed` (m/s, overrides the pace),
 `--scatter` (GPS noise in metres, default 3), `--duration` (`90s`, `20m`, `3h`),
 `--offline`, `--log FILE`, `--no-clear` to leave the last position in place on
 exit, and `--udid` to pick between multiple connected devices.
@@ -143,7 +147,8 @@ you are on decides what a map tap does:
 - **Walk** — the route editor and everything a walk needs. On this tab, tapping
   the map adds a waypoint; drag to move one, click it to remove it. Each edit
   re-routes through Valhalla (debounced ~300 ms) and draws the returned
-  polyline. Set profile, routing mode, loop, duration, and GPS scatter, then
+  polyline. Set pace (with its speed shown), routing mode, loop, duration, and
+  GPS scatter, then
   Start. Saving writes a `[presets.<name>]` table back to the config, so
   `ios-loc walk <name>` works on anything you draw, and your saved routes are
   listed below the editor. While a walk runs, this tab becomes the live view —
@@ -163,7 +168,7 @@ Two things worth knowing:
   crash), skips that cleanup and leaves the device frozen at its last simulated
   location — if that happens, run `ios-loc clear` to recover it.
 - **Saving a preset rewrites the `[presets.*]` tables.** Comments and hand
-  formatting inside those tables are lost. `[profiles.*]` and every other section
+  formatting inside those tables are lost. `[paces.*]` and every other section
   are preserved byte for byte, CRLF included.
 
 The map needs network access for OpenStreetMap tiles even under `--offline`,
@@ -198,31 +203,33 @@ matching its source.
 `~/.config/ios-loc/config.toml` (override with `--config`):
 
 ```toml
-[profiles.jog]
+[paces.jog]
 speed = 2.6            # m/s — must stay under 5.56 (20 km/h)
 jitter = 0.10
 pause_per_min = 0.05
 pause_min_s = 5
 pause_max_s = 20
-costing = "pedestrian"
 
 [presets.home-loop]
 waypoints = [[25.033, 121.5654], [25.038, 121.568], [25.033, 121.5654]]
-profile = "walk"
+pace = "walk"
+costing = "pedestrian"
 loop = true
 
 [places.landmark]
 point = [25.033, 121.565]
 ```
 
-**Profiles** layer over the built-in `walk` and `bike`; a new profile name
+**Paces** describe how fast to move and how often to rest — speed only, nothing
+about routing. They layer over the built-in `walk` and `bike`; a new pace name
 inherits `walk`'s defaults for the fields it omits. **Presets** are routes with
-waypoints, profile, and loop settings, loaded via the GUI or `ios-loc walk
-<name>`. **Places** are single coordinates saved from the GUI's Set location
-tab; picking one sets the device there. Deleting a route or place from the GUI
-rewrites this file, preserving comments and hand formatting outside the
-`[presets.*]` and `[places.*]` tables — `[profiles.*]` and every other section
-are untouched.
+waypoints, a pace, a costing, and a loop setting, loaded via the GUI or
+`ios-loc walk <name>`; the costing lives on the route because it describes the
+saved geometry, not on the pace. **Places** are single coordinates saved from
+the GUI's Set location tab; picking one sets the device there. Deleting a route
+or place from the GUI rewrites this file, preserving comments and hand
+formatting outside the `[presets.*]` and `[places.*]` tables — `[paces.*]` and
+every other section are untouched.
 
 ## Notes
 
