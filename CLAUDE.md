@@ -162,6 +162,10 @@ for unattended overnight runs.
 
 ## Hardware verification
 
-`docs/manual-verification.md` records what has and has *not* been confirmed on a real
-device. Keep it honest and up to date when device-facing behaviour changes; notably a
-real mid-run cable pull and a multi-hour run are still unverified.
+Everything except the device layer is covered by the test suite, which needs no device
+and no network. What a real iPhone has actually confirmed: `doctor`, `walk`, `set`,
+`clear`, and one short supervised GUI run. What it has not: reconnect after a genuine
+cable pull, a multi-hour unattended run, and `SessionLost` surfacing in the browser
+mid-walk. The README's Notes section states this to users — keep that honest when
+device-facing behaviour changes, and never let a green suite stand in for hardware
+proof on those paths.

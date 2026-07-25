@@ -221,8 +221,12 @@ are untouched.
 - **Routing uses the public FOSSGIS Valhalla server.** To run it locally instead,
   start `ghcr.io/gis-ops/docker-valhalla/valhalla` and point `ValhallaClient`'s
   `base_url` at `http://localhost:8002` — it speaks an identical API.
-- **Hardware coverage is recorded honestly** in `docs/manual-verification.md`,
-  including what has *not* been confirmed on a real device.
+- **Not everything is confirmed on hardware.** `doctor`, `walk`, `set`, and
+  `clear` have been exercised against a real iPhone, as has a short supervised
+  run from the GUI. These have *not*: reconnect after a genuine tunnel drop (a
+  physical cable pull), a multi-hour unattended run, and device-loss surfacing
+  as an error in the browser mid-walk. Each rests on unit tests against a
+  virtual clock and a fake device rather than on real hardware.
 
 ## Legal
 
