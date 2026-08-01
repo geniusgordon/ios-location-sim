@@ -8,6 +8,7 @@
 # direct .osm.pbf URL to have the container download it. Building tiles from
 # a fresh extract can take several minutes; `docker compose logs -f` shows
 # progress.
+
 services:
   valhalla:
     image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
