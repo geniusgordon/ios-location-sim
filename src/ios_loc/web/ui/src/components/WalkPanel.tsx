@@ -245,6 +245,9 @@ export default function WalkPanel(props: WalkPanelProps) {
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState("")
   const [pasteError, setPasteError] = useState<string | null>(null)
+  // Defaults to literal (today's behavior) every time the dialog opens, rather
+  // than remembering the last choice.
+  const [pasteLiteral, setPasteLiteral] = useState(true)
 
   const set = <K extends keyof DraftSettings>(key: K, value: DraftSettings[K]) => {
     props.onSettingsChange({ ...props.settings, [key]: value })
@@ -309,7 +312,7 @@ export default function WalkPanel(props: WalkPanelProps) {
   }
 
   const onPasteSubmit = () => {
-    const result = pasteRoute(pasteText)
+    const result = pasteRoute(pasteText, pasteLiteral)
     if ("error" in result) {
       setPasteError(result.error)
       return
@@ -317,6 +320,10 @@ export default function WalkPanel(props: WalkPanelProps) {
     setPasteError(null)
     setPasteOpen(false)
     setPasteText("")
+    // "Route between these points" is about turning a pasted list into a
+    // walkable route, not about picking a travel mode -- always plan it on
+    // foot regardless of whatever Routing mode the select last showed.
+    if (!pasteLiteral) props.onSettingsChange({ ...props.settings, costing: "pedestrian" })
     props.onPaste(result)
   }
 
@@ -355,6 +362,7 @@ export default function WalkPanel(props: WalkPanelProps) {
             onClick={() => {
               setPasteError(null)
               setPasteText("")
+              setPasteLiteral(true)
               setPasteOpen(true)
             }}
           >
@@ -599,8 +607,7 @@ export default function WalkPanel(props: WalkPanelProps) {
           <DialogHeader>
             <DialogTitle>Paste coordinates</DialogTitle>
             <DialogDescription>
-              One <code>latitude, longitude</code> pair per line. Used exactly as given — no
-              road-snapping — and replaces the current route.
+              One <code>latitude, longitude</code> pair per line. Replaces the current route.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2">
@@ -614,6 +621,19 @@ export default function WalkPanel(props: WalkPanelProps) {
               onChange={(event) => setPasteText(event.target.value)}
             />
           </div>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="paste-route"
+              checked={!pasteLiteral}
+              onCheckedChange={(checked) => setPasteLiteral(!checked)}
+            />
+            <Label htmlFor="paste-route">Route between these points</Label>
+          </div>
+          <p className="text-muted-foreground text-xs">
+            {pasteLiteral
+              ? "Walked exactly as given — no road-snapping."
+              : "Planned as a pedestrian route connecting these points."}
+          </p>
           {pasteError ? (
             <Alert variant="destructive">
               <AlertTitle>Could not parse</AlertTitle>

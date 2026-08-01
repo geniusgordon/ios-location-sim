@@ -80,13 +80,14 @@ export function clearRoute(): DraftRoute {
 }
 
 /**
- * Parse a pasted list of "lat, lon" lines into a literal `DraftRoute` --
- * walked exactly as given, with no Valhalla routing call. Blank lines are
- * ignored; anything else that doesn't parse into an in-range coordinate pair
- * fails the whole paste with a message naming the offending line, rather than
- * silently dropping it.
+ * Parse a pasted list of "lat, lon" lines into a `DraftRoute`. `literal` picks
+ * whether the points are walked exactly as given (no Valhalla call) or sent as
+ * waypoints for Valhalla to route between. Blank lines are ignored; anything
+ * else that doesn't parse into an in-range coordinate pair fails the whole
+ * paste with a message naming the offending line, rather than silently
+ * dropping it.
  */
-export function pasteRoute(text: string): DraftRoute | { error: string } {
+export function pasteRoute(text: string, literal: boolean): DraftRoute | { error: string } {
   const waypoints: LatLon[] = []
   const lines = text.split(/\r?\n/)
   for (const [index, rawLine] of lines.entries()) {
@@ -109,7 +110,7 @@ export function pasteRoute(text: string): DraftRoute | { error: string } {
   if (waypoints.length < 2) {
     return { error: "a route needs at least 2 points" }
   }
-  return { waypoints, name: null, literal: true }
+  return { waypoints, name: null, literal }
 }
 
 /** Total length of a literal route, in metres -- no `/api/route` call to ask Valhalla instead. */

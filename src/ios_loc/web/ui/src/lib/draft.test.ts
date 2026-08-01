@@ -117,7 +117,7 @@ describe("clearRoute", () => {
 
 describe("pasteRoute", () => {
   it("parses lat, lon lines into a literal route", () => {
-    const result = pasteRoute("19.03709, 78.644732\n19.038134, 78.646628\n")
+    const result = pasteRoute("19.03709, 78.644732\n19.038134, 78.646628\n", true)
     expect(result).toEqual({
       waypoints: [
         [19.03709, 78.644732],
@@ -128,8 +128,13 @@ describe("pasteRoute", () => {
     })
   })
 
+  it("parses into a routed (non-literal) route when asked", () => {
+    const result = pasteRoute("19.03709, 78.644732\n19.038134, 78.646628\n", false)
+    expect("error" in result ? undefined : result.literal).toBe(false)
+  })
+
   it("ignores blank lines", () => {
-    const result = pasteRoute("19.0, 78.0\n\n   \n19.1, 78.1\n")
+    const result = pasteRoute("19.0, 78.0\n\n   \n19.1, 78.1\n", true)
     expect("error" in result ? result.error : result.waypoints).toEqual([
       [19.0, 78.0],
       [19.1, 78.1],
@@ -137,17 +142,17 @@ describe("pasteRoute", () => {
   })
 
   it("rejects a line that is not two numbers", () => {
-    const result = pasteRoute("19.0, 78.0\nnope\n19.1, 78.1")
+    const result = pasteRoute("19.0, 78.0\nnope\n19.1, 78.1", true)
     expect(result).toEqual({ error: expect.stringContaining("line 2") })
   })
 
   it("rejects an out-of-range coordinate", () => {
-    const result = pasteRoute("190.0, 78.0\n19.1, 78.1")
+    const result = pasteRoute("190.0, 78.0\n19.1, 78.1", true)
     expect(result).toEqual({ error: expect.stringContaining("out of range") })
   })
 
   it("rejects fewer than 2 points", () => {
-    const result = pasteRoute("19.0, 78.0")
+    const result = pasteRoute("19.0, 78.0", true)
     expect(result).toEqual({ error: expect.stringContaining("at least 2") })
   })
 })
