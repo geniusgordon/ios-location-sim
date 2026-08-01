@@ -12,6 +12,7 @@ from dataclasses import dataclass, replace
 import tomli_w
 
 from ios_loc.path import Coord
+from ios_loc.routing import DEFAULT_VALHALLA_URL
 
 # Location-based games stop crediting distance above roughly 20 km/h.
 MAX_SPEED_MPS = 5.56
@@ -235,6 +236,20 @@ def load_places(path: pathlib.Path | None = None) -> dict[str, Place]:
             raise ConfigError(f"place {name!r} in {path}: missing required 'point'")
         places[name] = Place(name=name, point=_parse_point(raw["point"], name))
     return places
+
+
+def load_valhalla_url(path: pathlib.Path | None = None) -> str:
+    """Return the configured Valhalla `base_url`, or `DEFAULT_VALHALLA_URL`.
+
+    Deliberately separate from `load_config`, same reasoning as `load_places`:
+    an unknown top-level table is ignored, so `[valhalla]` needs no loader
+    change and an older build reading a newer config still works.
+    """
+    path = pathlib.Path(path) if path else DEFAULT_CONFIG_PATH
+    if not path.exists():
+        return DEFAULT_VALHALLA_URL
+    data = tomllib.loads(path.read_text())
+    return str(data.get("valhalla", {}).get("base_url", DEFAULT_VALHALLA_URL))
 
 
 # Shared verbatim by `cli.walk` and `POST /api/walk` so a rephrasing here never

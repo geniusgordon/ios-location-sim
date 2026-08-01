@@ -21,6 +21,7 @@ from ios_loc.presets import (
     ConfigError,
     _check_coord_range,
     load_config,
+    load_valhalla_url,
     resolve_walk,
 )
 from ios_loc.routing import RoutingError, ValhallaClient
@@ -179,6 +180,11 @@ def walk(
     duration: str = typer.Option(None, help="Stop after this long, e.g. 3h."),
     scatter: float = typer.Option(3.0, help="GPS scatter in metres."),
     offline: bool = typer.Option(False, "--offline", help="Fail if the route is not cached."),
+    valhalla_url: str = typer.Option(
+        None,
+        "--valhalla-url",
+        help="Valhalla server to route against. Overrides config.toml's [valhalla].base_url.",
+    ),
     udid: str = typer.Option(None, help="Target a specific device UDID."),
     config: pathlib.Path = typer.Option(None, help="Path to config.toml."),
     log: pathlib.Path = typer.Option(None, help="Also write progress to this file."),
@@ -253,7 +259,7 @@ def walk(
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", handlers=handlers)
 
     try:
-        client = ValhallaClient(offline=offline)
+        client = ValhallaClient(base_url=valhalla_url or load_valhalla_url(config), offline=offline)
         path = client.route(waypoints, costing=resolved.costing)
     except (RoutingError, ValueError) as exc:
         _fail(f"routing failed: {exc}")
@@ -340,13 +346,15 @@ def build_gui_app(
     offline: bool,
     udid: str | None,
     static_dir: pathlib.Path | None = DEFAULT_STATIC_DIR,
+    valhalla_url: str | None = None,
 ):
     """Assemble the GUI app. Separated from `gui` so tests need no server."""
     from ios_loc.web.api import create_app
     from ios_loc.web.device import probe_device
     from ios_loc.web.service import WalkService
 
-    route_client = ValhallaClient(offline=offline)
+    resolved_url = valhalla_url or load_valhalla_url(config)
+    route_client = ValhallaClient(base_url=resolved_url, offline=offline)
     service = WalkService(
         route_client=route_client,
         session_factory=lambda: LocationSession(lambda: open_simulation(udid)),
@@ -373,13 +381,20 @@ def gui(
     port: int = typer.Option(8765, help="Port to serve on."),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open a browser on start."),
     offline: bool = typer.Option(False, "--offline", help="Fail routing that is not cached."),
+    valhalla_url: str = typer.Option(
+        None,
+        "--valhalla-url",
+        help="Valhalla server to route against. Overrides config.toml's [valhalla].base_url.",
+    ),
     udid: str = typer.Option(None, help="Target a specific device UDID."),
     config: pathlib.Path = typer.Option(None, help="Path to config.toml."),
 ) -> None:
     """Serve the map GUI on localhost."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     _require_ui_assets(DEFAULT_STATIC_DIR)
-    application = build_gui_app(config=config, offline=offline, udid=udid)
+    application = build_gui_app(
+        config=config, offline=offline, udid=udid, valhalla_url=valhalla_url
+    )
     url = f"http://{host}:{port}"
     typer.echo(f"serving {url}")
     if open_browser:

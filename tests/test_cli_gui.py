@@ -78,6 +78,44 @@ def test_the_default_static_dir_points_inside_the_package():
     assert pathlib.Path(cli.__file__).parent / "web" / "static" == cli.DEFAULT_STATIC_DIR
 
 
+def test_valhalla_url_falls_back_to_the_config_table(monkeypatch, tmp_path):
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, base_url, offline=False):
+            captured["base_url"] = base_url
+
+    monkeypatch.setattr(cli, "ValhallaClient", FakeClient)
+    config = tmp_path / "config.toml"
+    config.write_text('[valhalla]\nbase_url = "http://config-server:8002"\n')
+
+    cli.build_gui_app(config=config, offline=False, udid=None, static_dir=None)
+
+    assert captured["base_url"] == "http://config-server:8002"
+
+
+def test_valhalla_url_flag_overrides_the_config_table(monkeypatch, tmp_path):
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, base_url, offline=False):
+            captured["base_url"] = base_url
+
+    monkeypatch.setattr(cli, "ValhallaClient", FakeClient)
+    config = tmp_path / "config.toml"
+    config.write_text('[valhalla]\nbase_url = "http://config-server:8002"\n')
+
+    cli.build_gui_app(
+        config=config,
+        offline=False,
+        udid=None,
+        static_dir=None,
+        valhalla_url="http://flag-server:9000",
+    )
+
+    assert captured["base_url"] == "http://flag-server:9000"
+
+
 def test_gui_command_opens_browser_by_default(monkeypatch, tmp_path, built_assets):
     """Verify that `gui` without --no-open calls webbrowser.open with correct URL."""
     calls = {}

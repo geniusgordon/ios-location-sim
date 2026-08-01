@@ -218,6 +218,9 @@ loop = true
 
 [places.landmark]
 point = [25.033, 121.565]
+
+[valhalla]
+base_url = "http://localhost:8002"
 ```
 
 **Paces** describe how fast to move and how often to rest — speed only, nothing
@@ -226,10 +229,13 @@ inherits `walk`'s defaults for the fields it omits. **Presets** are routes with
 waypoints, a pace, a costing, and a loop setting, loaded via the GUI or
 `ios-loc walk <name>`; the costing lives on the route because it describes the
 saved geometry, not on the pace. **Places** are single coordinates saved from
-the GUI's Set location tab; picking one sets the device there. Deleting a route
-or place from the GUI rewrites this file, preserving comments and hand
-formatting outside the `[presets.*]` and `[places.*]` tables — `[paces.*]` and
-every other section are untouched.
+the GUI's Set location tab; picking one sets the device there. **`[valhalla]`**
+sets which Valhalla server plans routes — see the Notes section below for
+running one locally; a `--valhalla-url` flag on `walk`/`gui` overrides it for a
+single run without touching the file. Deleting a route or place from the GUI
+rewrites this file, preserving comments and hand formatting outside the
+`[presets.*]` and `[places.*]` tables — `[paces.*]`, `[valhalla]`, and every
+other section are untouched.
 
 ## Notes
 
@@ -241,9 +247,12 @@ every other section are untouched.
   firing a catch-up burst that would teleport the position.
 - **Routes are cached** to `~/.cache/ios-loc/routes`. `--offline` fails fast rather
   than hitting the network, which is what you want for unattended overnight runs.
-- **Routing uses the public FOSSGIS Valhalla server.** To run it locally instead,
-  start `ghcr.io/gis-ops/docker-valhalla/valhalla` and point `ValhallaClient`'s
-  `base_url` at `http://localhost:8002` — it speaks an identical API.
+- **Routing uses the public FOSSGIS Valhalla server by default.** To run one
+  locally instead — no rate limits, works offline once tiles are built — run
+  `docker compose up -d` (see `docker-compose.yml`; first start builds tiles
+  from an `.osm.pbf` you drop into `./valhalla-data` and can take a while), then
+  set `[valhalla].base_url = "http://localhost:8002"` in config.toml, or pass
+  `--valhalla-url http://localhost:8002` for a single run.
 - **Not everything is confirmed on hardware.** `doctor`, `walk`, `set`, and
   `clear` have been exercised against a real iPhone, as has a short supervised
   run from the GUI. These have *not*: reconnect after a genuine tunnel drop (a

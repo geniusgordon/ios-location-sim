@@ -1,7 +1,9 @@
 import pytest
 from typer.testing import CliRunner
 
+from ios_loc import cli
 from ios_loc.cli import app, parse_duration, parse_waypoint
+from ios_loc.routing import RoutingError
 
 runner = CliRunner()
 
@@ -104,3 +106,55 @@ def test_bad_log_path_reports_cleanly(tmp_path):
     )
     assert result.exit_code != 0
     assert "Traceback" not in result.stdout
+
+
+class _FakeValhallaClient:
+    """Captures the `base_url` it was built with, then fails routing --
+    enough to verify what `walk` passed to `ValhallaClient` without needing a
+    real device session."""
+
+    captured_base_url: str | None = None
+
+    def __init__(self, base_url, offline=False):
+        type(self).captured_base_url = base_url
+
+    def route(self, waypoints, costing):
+        raise RoutingError("stop here -- routing is not under test")
+
+
+def test_walk_valhalla_url_falls_back_to_the_config_table(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli, "ValhallaClient", _FakeValhallaClient)
+    config = tmp_path / "config.toml"
+    config.write_text('[valhalla]\nbase_url = "http://config-server:8002"\n')
+
+    result = runner.invoke(
+        app,
+        ["walk", "--via", "25.0,121.0", "--via", "25.1,121.1", "--config", str(config)],
+    )
+
+    assert result.exit_code != 0
+    assert _FakeValhallaClient.captured_base_url == "http://config-server:8002"
+
+
+def test_walk_valhalla_url_flag_overrides_the_config_table(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli, "ValhallaClient", _FakeValhallaClient)
+    config = tmp_path / "config.toml"
+    config.write_text('[valhalla]\nbase_url = "http://config-server:8002"\n')
+
+    result = runner.invoke(
+        app,
+        [
+            "walk",
+            "--via",
+            "25.0,121.0",
+            "--via",
+            "25.1,121.1",
+            "--config",
+            str(config),
+            "--valhalla-url",
+            "http://flag-server:9000",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert _FakeValhallaClient.captured_base_url == "http://flag-server:9000"

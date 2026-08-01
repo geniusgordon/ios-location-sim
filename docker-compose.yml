@@ -1,0 +1,21 @@
+# A local Valhalla routing server, so `ios-loc walk`/`ios-loc gui` can plan
+# routes without hitting the public FOSSGIS server. See README's Config
+# section for the `[valhalla]` config.toml table and `--valhalla-url` flag
+# that point ios-loc at this container.
+#
+# First run: drop an .osm.pbf extract for your region into ./valhalla-data
+# (e.g. from https://download.geofabrik.de/), or set `tile_urls` below to a
+# direct .osm.pbf URL to have the container download it. Building tiles from
+# a fresh extract can take several minutes; `docker compose logs -f` shows
+# progress.
+services:
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./valhalla-data:/custom_files
+    environment:
+      - use_tiles_ignore_pbf=True
+      # - tile_urls=https://download.geofabrik.de/<region>-latest.osm.pbf
+    restart: unless-stopped

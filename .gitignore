@@ -7,3 +7,7 @@ __pycache__/
 # Built GUI assets — produced by `pnpm build` in src/ios_loc/web/ui.
 src/ios_loc/web/static/
 dist/
+
+# Local Valhalla server data (see docker-compose.yml) — an OSM extract plus
+# the tiles built from it, both regenerable and often gigabytes.
+valhalla-data/
