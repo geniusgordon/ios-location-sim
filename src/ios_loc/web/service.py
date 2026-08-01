@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from ios_loc.path import Coord, Path
 from ios_loc.presets import Pace
+from ios_loc.routing import RoutingError
 from ios_loc.runner import run_walk
 from ios_loc.session import SessionLost
 from ios_loc.walker import Walker
@@ -225,6 +226,10 @@ class WalkService:
                 self._run = None
                 self._state = WalkState.IDLE
                 self._error = f"{type(exc).__name__}: {exc}"
+                if isinstance(exc, (RoutingError, ValueError)):
+                    logger.warning("walk start failed: %s", exc)
+                else:
+                    logger.exception("walk start failed")
                 self._broadcast({"type": "state", "state": self._state.value, "error": self._error})
                 raise
             self._broadcast({"type": "state", "state": self._state.value, "error": None})

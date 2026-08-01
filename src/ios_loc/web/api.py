@@ -163,6 +163,7 @@ def create_app(
         try:
             path = await asyncio.to_thread(route_client.route, waypoints, body.costing)
         except (RoutingError, ValueError) as exc:
+            logger.warning("routing failed: %s", exc)
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         return RouteResponse(
             coords=[[lat, lon] for lat, lon in path.coords],
@@ -226,6 +227,7 @@ def create_app(
         except WalkAlreadyRunning as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except (RoutingError, ValueError) as exc:
+            logger.warning("routing failed: %s", exc)
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         except _PROGRAMMING_ERRORS:
             # A bug, not a device dropout: let it propagate to a 500 instead of

@@ -183,10 +183,35 @@ class ValhallaClient:
         }
         try:
             resp = self._poster(f"{self.base_url}/route", json=body, timeout=_TIMEOUT_S)
-            resp.raise_for_status()
+        except requests.Timeout as exc:
+            message = f"Valhalla did not respond within {_TIMEOUT_S}s ({self.base_url})"
+            logger.warning("%s: %s", message, exc)
+            raise RoutingError(message) from exc
+        except requests.RequestException as exc:
+            message = f"could not reach Valhalla at {self.base_url}: {exc}"
+            logger.warning(message)
+            raise RoutingError(message) from exc
+
+        if resp.status_code >= 400:
+            detail = None
+            with contextlib.suppress(ValueError):
+                body_json = resp.json()
+                if isinstance(body_json, dict):
+                    detail = body_json.get("error")
+            message = (
+                f"Valhalla rejected the route request: {detail}"
+                if detail
+                else f"Valhalla returned HTTP {resp.status_code}"
+            )
+            logger.warning(message)
+            raise RoutingError(message)
+
+        try:
             return resp.json()
-        except (requests.RequestException, ValueError) as exc:
-            raise RoutingError(f"Valhalla request failed: {exc}") from exc
+        except ValueError as exc:
+            message = f"Valhalla response was not valid JSON: {exc}"
+            logger.warning(message)
+            raise RoutingError(message) from exc
 
     def _to_path(self, payload: dict) -> Path:
         legs = payload.get("trip", {}).get("legs", [])

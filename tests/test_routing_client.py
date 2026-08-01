@@ -1,4 +1,5 @@
 import pytest
+import requests
 
 from ios_loc.routing import RouteNotCached, RoutingError, ValhallaClient
 
@@ -102,6 +103,31 @@ def test_route_without_legs_raises(tmp_path):
     poster = FakePoster(payload={"trip": {"legs": []}})
     client = ValhallaClient(cache_dir=tmp_path, poster=poster)
     with pytest.raises(RoutingError):
+        client.route(WAYPOINTS, costing="pedestrian")
+
+
+def test_valhalla_error_body_surfaces_in_the_message(tmp_path):
+    class RejectingPoster:
+        def __call__(self, url, json=None, timeout=None):
+            class Resp:
+                status_code = 400
+
+                def json(self_inner):
+                    return {"error": "No path could be found for input", "error_code": 442}
+
+            return Resp()
+
+    client = ValhallaClient(cache_dir=tmp_path, poster=RejectingPoster())
+    with pytest.raises(RoutingError, match="No path could be found for input"):
+        client.route(WAYPOINTS, costing="pedestrian")
+
+
+def test_timeout_message_mentions_the_timeout(tmp_path):
+    def timing_out(url, json=None, timeout=None):
+        raise requests.Timeout("timed out")
+
+    client = ValhallaClient(cache_dir=tmp_path, poster=timing_out)
+    with pytest.raises(RoutingError, match="did not respond"):
         client.route(WAYPOINTS, costing="pedestrian")
 
 
