@@ -292,7 +292,9 @@ export interface components {
         };
         /**
          * StartRequest
-         * @description Either `preset` or `waypoints` — the API rejects both and neither.
+         * @description Exactly one of `preset`, `waypoints`, or `path` — the API rejects any
+         *     other combination. `waypoints` is routed through Valhalla; `path` is a
+         *     literal route walked exactly as given, no routing call.
          */
         StartRequest: {
             /** Costing */
@@ -303,6 +305,11 @@ export interface components {
             loop?: boolean | null;
             /** Pace */
             pace?: string | null;
+            /** Path */
+            path?: [
+                number,
+                number
+            ][] | null;
             /** Preset */
             preset?: string | null;
             /**

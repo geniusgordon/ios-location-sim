@@ -49,6 +49,7 @@ export interface SidebarProps {
   offline: boolean
   onRemoveLast(): void
   onClear(): void
+  onPaste(route: DraftRoute): void
   onSaved(name: string): void
   onStarted(): void
   showSummary: boolean
@@ -130,6 +131,7 @@ export default function Sidebar(props: SidebarProps) {
             offline={props.offline}
             onRemoveLast={props.onRemoveLast}
             onClear={props.onClear}
+            onPaste={props.onPaste}
             onSaved={props.onSaved}
             onStarted={props.onStarted}
             showSummary={props.showSummary}

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Check, MapPin, Play, RefreshCw, Save, Square, Trash2, Undo2 } from "lucide-react"
+import { Check, ClipboardPaste, MapPin, Play, RefreshCw, Save, Square, Trash2, Undo2 } from "lucide-react"
 import type { Pace, Preset, WalkStateName } from "@/api/types"
 import { errorText, savePreset, startWalk, stopWalk } from "@/api/client"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -24,9 +24,10 @@ import {
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
 import LibraryRow from "@/components/LibraryRow"
 import { COSTINGS } from "@/lib/costings"
-import type { DraftRoute, DraftSettings } from "@/lib/draft"
+import { pasteRoute, type DraftRoute, type DraftSettings } from "@/lib/draft"
 import { formatDistance, formatDuration, formatPaceSpeed, formatSpeed } from "@/lib/format"
 import { canStart, startBody } from "@/lib/startBody"
 import { canStop, showsLiveDock } from "@/state/walkReducer"
@@ -218,6 +219,7 @@ export interface WalkPanelProps {
   offline: boolean
   onRemoveLast(): void
   onClear(): void
+  onPaste(route: DraftRoute): void
   onSaved(name: string): void
   onStarted(): void
   /** True while a finished/lost run's summary should stay on screen even
@@ -240,6 +242,9 @@ export default function WalkPanel(props: WalkPanelProps) {
   const [saveName, setSaveName] = useState("")
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [pasteOpen, setPasteOpen] = useState(false)
+  const [pasteText, setPasteText] = useState("")
+  const [pasteError, setPasteError] = useState<string | null>(null)
 
   const set = <K extends keyof DraftSettings>(key: K, value: DraftSettings[K]) => {
     props.onSettingsChange({ ...props.settings, [key]: value })
@@ -303,6 +308,18 @@ export default function WalkPanel(props: WalkPanelProps) {
     }
   }
 
+  const onPasteSubmit = () => {
+    const result = pasteRoute(pasteText)
+    if ("error" in result) {
+      setPasteError(result.error)
+      return
+    }
+    setPasteError(null)
+    setPasteOpen(false)
+    setPasteText("")
+    props.onPaste(result)
+  }
+
   const empty = props.route.waypoints.length === 0
 
   // `pace: null` means "inherit the default", which the backend resolves to
@@ -331,6 +348,18 @@ export default function WalkPanel(props: WalkPanelProps) {
             )}
           </span>
           {props.routePending ? <Spinner className="size-4 shrink-0" /> : null}
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Paste coordinates"
+            onClick={() => {
+              setPasteError(null)
+              setPasteText("")
+              setPasteOpen(true)
+            }}
+          >
+            <ClipboardPaste className="size-4" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -422,7 +451,7 @@ export default function WalkPanel(props: WalkPanelProps) {
               if (value !== null) set("costing", value)
             }}
           >
-            <SelectTrigger id="opt-costing" disabled={props.offline}>
+            <SelectTrigger id="opt-costing" disabled={props.offline || props.route.literal}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -434,7 +463,9 @@ export default function WalkPanel(props: WalkPanelProps) {
             </SelectContent>
           </Select>
           <p className="text-muted-foreground text-xs">
-            Which paths the route follows. Independent of the pace.
+            {props.route.literal
+              ? "No effect on a pasted route — it is walked exactly as given."
+              : "Which paths the route follows. Independent of the pace."}
           </p>
         </div>
 
@@ -476,7 +507,8 @@ export default function WalkPanel(props: WalkPanelProps) {
           <Button
             variant="outline"
             className="flex-1"
-            disabled={props.route.waypoints.length < 2}
+            disabled={props.route.waypoints.length < 2 || props.route.literal}
+            title={props.route.literal ? "Pasted routes can't be saved as a preset yet" : undefined}
             onClick={() => {
               setSaveName(props.route.name ?? "")
               setSaveError(null)
@@ -557,6 +589,40 @@ export default function WalkPanel(props: WalkPanelProps) {
           <DialogFooter>
             <Button disabled={saveName.trim().length === 0 || saving} onClick={onSave}>
               {saving ? <Spinner className="size-4" /> : <Save className="size-4" />} Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pasteOpen} onOpenChange={setPasteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Paste coordinates</DialogTitle>
+            <DialogDescription>
+              One <code>latitude, longitude</code> pair per line. Used exactly as given — no
+              road-snapping — and replaces the current route.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Label htmlFor="paste-coords">Coordinates</Label>
+            <Textarea
+              id="paste-coords"
+              rows={10}
+              className="min-h-40 font-mono text-xs"
+              placeholder={"19.0370900, 78.6447320\n19.0381340, 78.6466280"}
+              value={pasteText}
+              onChange={(event) => setPasteText(event.target.value)}
+            />
+          </div>
+          {pasteError ? (
+            <Alert variant="destructive">
+              <AlertTitle>Could not parse</AlertTitle>
+              <AlertDescription>{pasteError}</AlertDescription>
+            </Alert>
+          ) : null}
+          <DialogFooter>
+            <Button disabled={pasteText.trim().length === 0} onClick={onPasteSubmit}>
+              <ClipboardPaste className="size-4" /> Use these points
             </Button>
           </DialogFooter>
         </DialogContent>

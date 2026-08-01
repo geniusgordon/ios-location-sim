@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest"
 import { defaultSettings, type DraftRoute } from "./draft"
 import { canStart, startBody } from "./startBody"
 
-const TWO: DraftRoute = { waypoints: [[1, 1], [2, 2]], name: null }
-const NAMED: DraftRoute = { waypoints: [[1, 1], [2, 2]], name: "riverside" }
+const TWO: DraftRoute = { waypoints: [[1, 1], [2, 2]], name: null, literal: false }
+const NAMED: DraftRoute = { waypoints: [[1, 1], [2, 2]], name: "riverside", literal: false }
+const LITERAL: DraftRoute = { waypoints: [[1, 1], [2, 2]], name: null, literal: true }
 
 describe("startBody", () => {
   // The API rejects both and neither -- exactly one of preset/waypoints.
@@ -11,6 +12,7 @@ describe("startBody", () => {
     const body = startBody(TWO, { ...defaultSettings, costing: "bicycle" })
     expect(body.preset).toBeNull()
     expect(body.waypoints).toEqual([[1, 1], [2, 2]])
+    expect(body.path).toBeNull()
     expect(body.costing).toBe("bicycle")
   })
 
@@ -18,6 +20,15 @@ describe("startBody", () => {
     const body = startBody(NAMED, defaultSettings)
     expect(body.preset).toBe("riverside")
     expect(body.waypoints).toBeNull()
+    expect(body.path).toBeNull()
+  })
+
+  // The API rejects any combination other than exactly one of preset/waypoints/path.
+  it("sends path instead of waypoints for a literal route", () => {
+    const body = startBody(LITERAL, defaultSettings)
+    expect(body.preset).toBeNull()
+    expect(body.waypoints).toBeNull()
+    expect(body.path).toEqual([[1, 1], [2, 2]])
   })
 
   // Routing mode is the only thing that decides costing. It is sent for a named
@@ -67,8 +78,8 @@ describe("startBody", () => {
 
 describe("canStart", () => {
   it("needs two waypoints", () => {
-    expect(canStart({ waypoints: [], name: null })).toBe(false)
-    expect(canStart({ waypoints: [[1, 1]], name: null })).toBe(false)
+    expect(canStart({ waypoints: [], name: null, literal: false })).toBe(false)
+    expect(canStart({ waypoints: [[1, 1]], name: null, literal: false })).toBe(false)
     expect(canStart(TWO)).toBe(true)
   })
 })

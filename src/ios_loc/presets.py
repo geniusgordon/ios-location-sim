@@ -240,8 +240,8 @@ def load_places(path: pathlib.Path | None = None) -> dict[str, Place]:
 # Shared verbatim by `cli.walk` and `POST /api/walk` so a rephrasing here never
 # drifts out of sync between the two callers. The CLI appends its own
 # `--via`-specific hint on top of these; the API leaves them as-is.
-PRESET_AND_WAYPOINTS_CONFLICT = "pass either a preset name or waypoints, not both"
-NEEDS_PRESET_OR_WAYPOINTS = "a walk needs a preset or at least 2 waypoints"
+PRESET_AND_WAYPOINTS_CONFLICT = "pass exactly one of a preset name, waypoints, or a path"
+NEEDS_PRESET_OR_WAYPOINTS = "a walk needs a preset, at least 2 waypoints, or a path"
 NEEDS_TWO_WAYPOINTS = "a route needs at least 2 waypoints"
 
 
@@ -254,12 +254,17 @@ class ResolvedWalk:
     pace: Pace
     loop: bool
     preset_name: str | None = None
+    # True when `waypoints` is a literal path to walk exactly as given -- no
+    # Valhalla routing call. `costing` is meaningless in that case (kept only
+    # because every other branch has one); it is never acted on downstream.
+    literal: bool = False
 
 
 def resolve_walk(
     *,
     preset: str | None,
     waypoints: list[Coord] | None,
+    path: list[Coord] | None = None,
     pace: str | None,
     speed: float | None,
     costing: str | None,
@@ -267,33 +272,37 @@ def resolve_walk(
     paces: dict[str, Pace],
     presets: dict[str, Preset],
 ) -> ResolvedWalk:
-    """Resolve a preset name or ad-hoc waypoints, plus overrides, into a
-    concrete `ResolvedWalk`. This is the one rule shared by `ios-loc walk` and
-    `POST /api/walk` — both parse their own inputs (the CLI's `--via 'lat,lon'`
-    strings, the API's JSON body) and both present failures their own way, but
-    the resolution rule itself — preset XOR waypoints, pace/speed/costing/loop
-    overrides, the 20 km/h ceiling — lives only here.
+    """Resolve a preset name, ad-hoc waypoints, or a literal path, plus
+    overrides, into a concrete `ResolvedWalk`. This is the one rule shared by
+    `ios-loc walk` and `POST /api/walk` — both parse their own inputs (the
+    CLI's `--via 'lat,lon'` strings, the API's JSON body) and both present
+    failures their own way, but the resolution rule itself — preset XOR
+    waypoints XOR path, pace/speed/costing/loop overrides, the 20 km/h ceiling
+    — lives only here.
 
     Pace and costing are resolved independently and never feed each other: the
     pace decides how fast, the costing decides which way. An explicit `costing`
     wins; otherwise a preset supplies the costing it was saved with and an
     ad-hoc route falls back to `DEFAULT_COSTING`. Changing the pace alone can
-    therefore never change the route that gets planned.
+    therefore never change the route that gets planned. `path` skips routing
+    entirely, so `costing` is resolved but unused.
 
     Raises `ConfigError` for an unknown preset or pace name, `ValueError` for
-    anything else invalid: neither/both of preset and waypoints, too few
-    waypoints, an out-of-range coordinate, or an over-ceiling speed.
+    anything else invalid: not exactly one of preset/waypoints/path, too few
+    points, an out-of-range coordinate, or an over-ceiling speed.
 
     Deliberately does not know about routing: whether a `--loop`/`loop=True`
     route actually returns to its start is only knowable after the route is
     built, so that check stays with each caller, after it calls this.
     """
-    if preset and waypoints:
+    given = sum(1 for value in (preset, waypoints, path) if value)
+    if given > 1:
         raise ValueError(PRESET_AND_WAYPOINTS_CONFLICT)
-    if not preset and not waypoints:
+    if given == 0:
         raise ValueError(NEEDS_PRESET_OR_WAYPOINTS)
 
     preset_name = None
+    literal = False
     if preset:
         if preset not in presets:
             raise ConfigError(f"unknown preset {preset!r}")
@@ -303,6 +312,16 @@ def resolve_walk(
         resolved_loop = chosen.loop if loop is None else loop
         resolved_costing = costing or chosen.costing
         preset_name = chosen.name
+    elif path:
+        if len(path) < 2:
+            raise ValueError(NEEDS_TWO_WAYPOINTS)
+        for index, (lat, lon) in enumerate(path):
+            _check_coord_range(lat, lon, f"waypoint {index}")
+        resolved_waypoints = list(path)
+        pace_name = pace or "walk"
+        resolved_loop = bool(loop)
+        resolved_costing = costing or DEFAULT_COSTING
+        literal = True
     else:
         assert waypoints is not None  # guaranteed by the guard above
         if len(waypoints) < 2:
@@ -328,6 +347,7 @@ def resolve_walk(
         pace=resolved_pace,
         loop=resolved_loop,
         preset_name=preset_name,
+        literal=literal,
     )
 
 

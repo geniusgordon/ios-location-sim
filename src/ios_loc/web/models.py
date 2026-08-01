@@ -135,10 +135,13 @@ class RouteResponse(BaseModel):
 
 
 class StartRequest(BaseModel):
-    """Either `preset` or `waypoints` — the API rejects both and neither."""
+    """Exactly one of `preset`, `waypoints`, or `path` — the API rejects any
+    other combination. `waypoints` is routed through Valhalla; `path` is a
+    literal route walked exactly as given, no routing call."""
 
     preset: str | None = None
     waypoints: list[Coord] | None = None
+    path: list[Coord] | None = None
     pace: str | None = None
     speed: float | None = None
     # Independent of `pace`. None means "use the preset's saved costing", or

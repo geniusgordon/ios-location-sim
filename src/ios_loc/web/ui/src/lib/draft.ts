@@ -1,3 +1,4 @@
+import { haversineM } from "@/lib/geo"
 import type { LatLon, Preset } from "@/api/types"
 
 /**
@@ -5,10 +6,16 @@ import type { LatLon, Preset } from "@/api/types"
  * this one, and cleared by the first edit afterwards: the moment the waypoints
  * stop being the preset, starting BY NAME would run the old route on the phone
  * while the map shows the new one.
+ *
+ * `literal` marks a pasted route: its waypoints are the exact path to walk,
+ * with no Valhalla routing call. It survives ordinary edits (drag, add,
+ * remove) -- those still describe the same literal path -- but never survives
+ * loading a preset, which is always Valhalla-planned geometry.
  */
 export interface DraftRoute {
   waypoints: LatLon[]
   name: string | null
+  literal: boolean
 }
 
 /**
@@ -27,7 +34,7 @@ export interface DraftSettings {
   scatterM: string
 }
 
-export const emptyRoute: DraftRoute = { waypoints: [], name: null }
+export const emptyRoute: DraftRoute = { waypoints: [], name: null, literal: false }
 
 export const defaultSettings: DraftSettings = {
   pace: null,
@@ -37,29 +44,81 @@ export const defaultSettings: DraftSettings = {
   scatterM: "3",
 }
 
-/** Any edit produces an unnamed route -- see `DraftRoute.name`. */
-function edited(waypoints: LatLon[]): DraftRoute {
-  return { waypoints, name: null }
+/**
+ * Any edit produces an unnamed route -- see `DraftRoute.name` -- but keeps
+ * whatever `literal` the route already had: editing a pasted path's points
+ * still describes a literal path, not a re-interpretation as routed waypoints.
+ */
+function edited(waypoints: LatLon[], literal: boolean): DraftRoute {
+  return { waypoints, name: null, literal }
 }
 
 export function addWaypoint(route: DraftRoute, point: LatLon): DraftRoute {
-  return edited([...route.waypoints, point])
+  return edited([...route.waypoints, point], route.literal)
 }
 
 export function moveWaypoint(route: DraftRoute, index: number, point: LatLon): DraftRoute {
-  return edited(route.waypoints.map((p, i) => (i === index ? point : p)))
+  return edited(
+    route.waypoints.map((p, i) => (i === index ? point : p)),
+    route.literal,
+  )
 }
 
 export function removeWaypoint(route: DraftRoute, index: number): DraftRoute {
-  return edited(route.waypoints.filter((_, i) => i !== index))
+  return edited(
+    route.waypoints.filter((_, i) => i !== index),
+    route.literal,
+  )
 }
 
 export function removeLast(route: DraftRoute): DraftRoute {
-  return edited(route.waypoints.slice(0, -1))
+  return edited(route.waypoints.slice(0, -1), route.literal)
 }
 
 export function clearRoute(): DraftRoute {
-  return { waypoints: [], name: null }
+  return { waypoints: [], name: null, literal: false }
+}
+
+/**
+ * Parse a pasted list of "lat, lon" lines into a literal `DraftRoute` --
+ * walked exactly as given, with no Valhalla routing call. Blank lines are
+ * ignored; anything else that doesn't parse into an in-range coordinate pair
+ * fails the whole paste with a message naming the offending line, rather than
+ * silently dropping it.
+ */
+export function pasteRoute(text: string): DraftRoute | { error: string } {
+  const waypoints: LatLon[] = []
+  const lines = text.split(/\r?\n/)
+  for (const [index, rawLine] of lines.entries()) {
+    const line = rawLine.trim()
+    if (line.length === 0) continue
+    const parts = line.split(",")
+    if (parts.length !== 2) {
+      return { error: `line ${index + 1}: expected "latitude, longitude", got ${JSON.stringify(rawLine)}` }
+    }
+    const lat = Number.parseFloat(parts[0])
+    const lon = Number.parseFloat(parts[1])
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return { error: `line ${index + 1}: not two numbers: ${JSON.stringify(rawLine)}` }
+    }
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      return { error: `line ${index + 1}: out of range: latitude ${lat}, longitude ${lon}` }
+    }
+    waypoints.push([lat, lon])
+  }
+  if (waypoints.length < 2) {
+    return { error: "a route needs at least 2 points" }
+  }
+  return { waypoints, name: null, literal: true }
+}
+
+/** Total length of a literal route, in metres -- no `/api/route` call to ask Valhalla instead. */
+export function routeLengthM(waypoints: LatLon[]): number {
+  let total = 0
+  for (let i = 1; i < waypoints.length; i++) {
+    total += haversineM(waypoints[i - 1], waypoints[i])
+  }
+  return total
 }
 
 /**
@@ -73,7 +132,7 @@ export function loadPreset(
   settings: DraftSettings,
 ): { route: DraftRoute; settings: DraftSettings } {
   return {
-    route: { waypoints: preset.waypoints as LatLon[], name: preset.name },
+    route: { waypoints: preset.waypoints as LatLon[], name: preset.name, literal: false },
     settings: {
       ...settings,
       pace: preset.pace,

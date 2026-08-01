@@ -361,7 +361,7 @@
         "type": "object"
       },
       "StartRequest": {
-        "description": "Either `preset` or `waypoints` \u2014 the API rejects both and neither.",
+        "description": "Exactly one of `preset`, `waypoints`, or `path` \u2014 the API rejects any\nother combination. `waypoints` is routed through Valhalla; `path` is a\nliteral route walked exactly as given, no routing call.",
         "properties": {
           "costing": {
             "anyOf": [
@@ -407,6 +407,30 @@
               }
             ],
             "title": "Pace"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
           },
           "preset": {
             "anyOf": [

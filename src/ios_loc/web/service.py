@@ -33,6 +33,9 @@ class StartSpec:
     duration_s: float | None = None
     scatter_m: float = 3.0
     preset_name: str | None = None
+    # True when `waypoints` is a literal path to walk exactly as given --
+    # `start()` skips the Valhalla routing call entirely.
+    literal: bool = False
 
 
 @dataclass
@@ -187,10 +190,14 @@ class WalkService:
             self._state = WalkState.STARTING
             self._error = None
             try:
-                # RouteClient.route() is synchronous `requests`; keep it off the loop.
-                path = await asyncio.to_thread(
-                    self._route_client.route, spec.waypoints, spec.costing
-                )
+                if spec.literal:
+                    # Already the final path -- no Valhalla call to make.
+                    path = Path(spec.waypoints)
+                else:
+                    # RouteClient.route() is synchronous `requests`; keep it off the loop.
+                    path = await asyncio.to_thread(
+                        self._route_client.route, spec.waypoints, spec.costing
+                    )
 
                 walker = Walker(
                     path, spec.pace, loop=spec.loop, rng=self._rng, scatter_m=spec.scatter_m

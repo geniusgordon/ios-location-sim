@@ -11,9 +11,10 @@ export function startBody(route: DraftRoute, settings: DraftSettings): StartRequ
   const minutes = Number.parseFloat(settings.durationMin)
   const scatter = Number.parseFloat(settings.scatterM)
   return {
-    // Exactly one of these -- the API rejects both and neither.
+    // Exactly one of these three -- the API rejects any other combination.
     preset: route.name,
-    waypoints: named ? null : route.waypoints,
+    waypoints: !named && !route.literal ? route.waypoints : null,
+    path: !named && route.literal ? route.waypoints : null,
     pace: settings.pace,
     speed: null,
     // Always sent, named route or not: "Routing mode" is the one thing that

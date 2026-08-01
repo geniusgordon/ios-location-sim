@@ -7,11 +7,17 @@ import {
   emptyRoute,
   loadPreset,
   moveWaypoint,
+  pasteRoute,
   removeLast,
   removeWaypoint,
+  routeLengthM,
 } from "./draft"
 
-const LOADED = { waypoints: [[1, 1], [2, 2]] as [number, number][], name: "riverside" }
+const LOADED = {
+  waypoints: [[1, 1], [2, 2]] as [number, number][],
+  name: "riverside",
+  literal: false,
+}
 
 describe("waypoint edits", () => {
   it("appends, moves and removes by index", () => {
@@ -36,6 +42,14 @@ describe("waypoint edits", () => {
     addWaypoint(before, [2, 2])
     expect(before.waypoints).toEqual([[1, 1]])
   })
+
+  it("preserves a literal route through edits", () => {
+    const literal = { waypoints: [[1, 1], [2, 2]] as [number, number][], name: null, literal: true }
+    expect(addWaypoint(literal, [3, 3]).literal).toBe(true)
+    expect(moveWaypoint(literal, 0, [3, 3]).literal).toBe(true)
+    expect(removeWaypoint(literal, 0).literal).toBe(true)
+    expect(removeLast(literal).literal).toBe(true)
+  })
 })
 
 describe("the name", () => {
@@ -57,7 +71,11 @@ describe("the name", () => {
       costing: "bicycle",
     } as unknown as Preset
     const result = loadPreset(preset, defaultSettings)
-    expect(result.route).toEqual({ waypoints: [[1, 1], [2, 2]], name: "riverside" })
+    expect(result.route).toEqual({
+      waypoints: [[1, 1], [2, 2]],
+      name: "riverside",
+      literal: false,
+    })
     expect(result.settings.pace).toBe("bike")
     expect(result.settings.loop).toBe(true)
   })
@@ -93,6 +111,61 @@ describe("the name", () => {
 
 describe("clearRoute", () => {
   it("empties the waypoints and the name", () => {
-    expect(clearRoute()).toEqual({ waypoints: [], name: null })
+    expect(clearRoute()).toEqual({ waypoints: [], name: null, literal: false })
+  })
+})
+
+describe("pasteRoute", () => {
+  it("parses lat, lon lines into a literal route", () => {
+    const result = pasteRoute("19.03709, 78.644732\n19.038134, 78.646628\n")
+    expect(result).toEqual({
+      waypoints: [
+        [19.03709, 78.644732],
+        [19.038134, 78.646628],
+      ],
+      name: null,
+      literal: true,
+    })
+  })
+
+  it("ignores blank lines", () => {
+    const result = pasteRoute("19.0, 78.0\n\n   \n19.1, 78.1\n")
+    expect("error" in result ? result.error : result.waypoints).toEqual([
+      [19.0, 78.0],
+      [19.1, 78.1],
+    ])
+  })
+
+  it("rejects a line that is not two numbers", () => {
+    const result = pasteRoute("19.0, 78.0\nnope\n19.1, 78.1")
+    expect(result).toEqual({ error: expect.stringContaining("line 2") })
+  })
+
+  it("rejects an out-of-range coordinate", () => {
+    const result = pasteRoute("190.0, 78.0\n19.1, 78.1")
+    expect(result).toEqual({ error: expect.stringContaining("out of range") })
+  })
+
+  it("rejects fewer than 2 points", () => {
+    const result = pasteRoute("19.0, 78.0")
+    expect(result).toEqual({ error: expect.stringContaining("at least 2") })
+  })
+})
+
+describe("routeLengthM", () => {
+  it("is zero for fewer than 2 points", () => {
+    expect(routeLengthM([])).toBe(0)
+    expect(routeLengthM([[1, 1]])).toBe(0)
+  })
+
+  it("sums segment distances", () => {
+    // 1 degree of latitude is ~111.2 km.
+    const length = routeLengthM([
+      [0, 0],
+      [1, 0],
+      [2, 0],
+    ])
+    expect(length).toBeGreaterThan(220_000)
+    expect(length).toBeLessThan(224_000)
   })
 })

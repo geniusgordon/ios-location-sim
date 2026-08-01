@@ -56,7 +56,7 @@ def test_walk_rejects_no_arguments():
     result = runner.invoke(app, ["walk"])
     assert result.exit_code != 0
     assert result.stdout.strip() == (
-        "a walk needs a preset or at least 2 waypoints — pass --via 'lat,lon' twice"
+        "a walk needs a preset, at least 2 waypoints, or a path — pass --via 'lat,lon' twice"
     )
 
 

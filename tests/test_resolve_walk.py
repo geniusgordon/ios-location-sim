@@ -24,6 +24,7 @@ def resolve(**overrides):
     kwargs = dict(
         preset=None,
         waypoints=TWO,
+        path=None,
         pace=None,
         speed=None,
         costing=None,
@@ -104,3 +105,49 @@ def test_speed_override_still_hits_the_ceiling():
 def test_an_unknown_pace_is_a_config_error():
     with pytest.raises(ConfigError, match="unknown pace"):
         resolve(pace="sprint")
+
+
+# -- a literal path skips routing entirely ------------------------------------
+
+
+def test_a_path_resolves_to_a_literal_walk():
+    resolved = resolve(waypoints=None, path=TWO)
+    assert resolved.waypoints == TWO
+    assert resolved.literal is True
+    assert resolved.preset_name is None
+
+
+def test_waypoints_and_presets_are_not_literal():
+    assert resolve().literal is False
+    assert resolve(**preset_config()).literal is False
+
+
+def test_a_path_still_defaults_pace_and_loop_like_adhoc_waypoints():
+    resolved = resolve(waypoints=None, path=TWO)
+    assert resolved.pace.name == "walk"
+    assert resolved.loop is False
+
+
+def test_a_path_needs_at_least_two_points():
+    with pytest.raises(ValueError, match="at least 2"):
+        resolve(waypoints=None, path=[(25.0, 121.0)])
+
+
+def test_a_path_still_validates_coordinate_range():
+    with pytest.raises(ValueError, match="out of range"):
+        resolve(waypoints=None, path=[(200.0, 121.0), (25.1, 121.1)])
+
+
+def test_preset_and_path_together_is_rejected():
+    with pytest.raises(ValueError, match="exactly one"):
+        resolve(**preset_config(), path=TWO)
+
+
+def test_waypoints_and_path_together_is_rejected():
+    with pytest.raises(ValueError, match="exactly one"):
+        resolve(path=TWO)
+
+
+def test_none_of_preset_waypoints_or_path_is_rejected():
+    with pytest.raises(ValueError, match="needs a preset"):
+        resolve(waypoints=None)

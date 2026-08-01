@@ -58,6 +58,16 @@ async def test_status_exposes_the_routed_polyline():
     assert service.status().route == [[lat, lon] for lat, lon in SQUARE]
 
 
+async def test_a_literal_path_skips_routing_entirely():
+    route_client = FakeRouteClient()
+    service, _ = make_service(route_client=route_client)
+    await service.start(spec(duration_s=1.0, literal=True))
+    await service.wait_finished()
+    # The literal waypoints, not the fake client's stand-in SQUARE polyline.
+    assert service.status().route == [[lat, lon] for lat, lon in [SQUARE[0], SQUARE[-1]]]
+    assert route_client.calls == []
+
+
 async def test_second_start_while_running_is_refused():
     service, _ = make_service()
     await service.start(spec(duration_s=5.0))

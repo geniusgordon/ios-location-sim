@@ -18,6 +18,7 @@ import {
   moveWaypoint,
   removeLast,
   removeWaypoint,
+  routeLengthM,
   type DraftRoute,
   type DraftSettings,
 } from "@/lib/draft"
@@ -146,8 +147,11 @@ export default function App() {
   }, [meta.state])
 
   // One debounced, server-cached Valhalla call, gated on the device being free
-  // so a map-first route draws as a line rather than disconnected dots.
-  const preview = useRoutePreview(route.waypoints, settings.costing, !offline && editing)
+  // so a map-first route draws as a line rather than disconnected dots. A
+  // literal (pasted) route has nothing to preview -- there is no routing call
+  // to make -- so it is drawn straight from its own points instead (below).
+  const preview = useRoutePreview(route.waypoints, settings.costing, !offline && editing && !route.literal)
+  const lengthM = route.literal ? routeLengthM(route.waypoints) : preview.lengthM
 
   // Selecting a saved thing on mobile collapses the overlay so the result is
   // visible on the map behind it; on desktop the inline sidebar leaves the map
@@ -207,7 +211,7 @@ export default function App() {
           route={route}
           settings={settings}
           onSettingsChange={setSettings}
-          lengthM={preview.lengthM}
+          lengthM={lengthM}
           routePending={preview.pending}
           routeError={preview.error}
           loadError={loadError}
@@ -220,6 +224,10 @@ export default function App() {
           onClear={() => {
             setShowSummary(false)
             setRoute(clearRoute())
+          }}
+          onPaste={(next) => {
+            setShowSummary(false)
+            setRoute(next)
           }}
           onSaved={(name) => {
             setRoute((r) => ({ ...r, name }))
@@ -254,7 +262,7 @@ export default function App() {
       <div className="relative min-h-0 flex-1">
         <MapView
           draftWaypoints={route.waypoints}
-          draftRoute={preview.route}
+          draftRoute={route.literal ? route.waypoints : preview.route}
           editing={editing}
           mode={tab === "location" ? "location" : "route"}
           centerOn={centerOn}

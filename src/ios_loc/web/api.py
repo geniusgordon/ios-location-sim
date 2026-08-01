@@ -192,6 +192,7 @@ def create_app(
             resolved = resolve_walk(
                 preset=body.preset,
                 waypoints=body.waypoints,
+                path=body.path,
                 pace=body.pace,
                 speed=body.speed,
                 costing=body.costing,
@@ -218,6 +219,7 @@ def create_app(
             duration_s=body.duration_s,
             scatter_m=body.scatter_m,
             preset_name=resolved.preset_name,
+            literal=resolved.literal,
         )
         try:
             return await service.start(spec)
