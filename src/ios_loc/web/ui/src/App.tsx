@@ -228,6 +228,9 @@ export default function App() {
           onPaste={(next) => {
             setShowSummary(false)
             setRoute(next)
+            // Map-first: a paste can land anywhere, so recenter on its first
+            // point rather than leaving the map wherever it happened to be.
+            if (next.waypoints.length > 0) recenterTo(next.waypoints[0])
           }}
           onSaved={(name) => {
             setRoute((r) => ({ ...r, name }))
