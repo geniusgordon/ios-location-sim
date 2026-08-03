@@ -14,7 +14,8 @@ import typer
 import uvicorn
 
 from ios_loc.discovery import DiscoveryError, find_device, open_simulation
-from ios_loc.path import Coord
+from ios_loc.gpx import parse_gpx
+from ios_loc.path import Coord, Path
 from ios_loc.presets import (
     NEEDS_PRESET_OR_WAYPOINTS,
     NEEDS_TWO_WAYPOINTS,
@@ -53,6 +54,18 @@ def parse_waypoint(text: str) -> Coord:
     except ValueError as exc:
         raise ValueError(f"waypoint out of range: {text!r}") from exc
     return lat, lon
+
+
+def _load_gpx(gpx_path: pathlib.Path) -> list[Coord]:
+    """Read and parse a GPX file, naming the file in any error."""
+    try:
+        text = gpx_path.read_text()
+    except OSError as exc:
+        raise ValueError(f"could not read {gpx_path}: {exc}") from exc
+    try:
+        return parse_gpx(text)
+    except ValueError as exc:
+        raise ValueError(f"{gpx_path}: {exc}") from exc
 
 
 def parse_duration(text: str) -> float:
@@ -169,6 +182,11 @@ def presets_list(
 def walk(
     preset: str = typer.Argument(None, help="Name of a preset from config.toml."),
     via: list[str] = typer.Option(None, "--via", help="Waypoint as 'lat,lon'. Repeatable."),
+    gpx: pathlib.Path = typer.Option(
+        None,
+        "--gpx",
+        help="Walk a track loaded from a GPX file, exactly as recorded (no Valhalla routing).",
+    ),
     pace: str = typer.Option(None, help="Pace name, e.g. walk or bike. Speed only."),
     speed: float = typer.Option(None, help="Override the pace's base speed, m/s."),
     costing: str = typer.Option(
@@ -198,20 +216,27 @@ def walk(
     except ConfigError as exc:
         _fail(f"config error: {exc}")
 
-    # Check the preset/--via conflict before parsing --via strings: it is the
-    # more useful message, and reporting it must not depend on whether the
-    # (irrelevant, since it will be rejected regardless) --via value happens to
-    # parse.
-    if preset and via:
+    # Check the preset/--via/--gpx conflict before parsing either --via
+    # strings or the GPX file: it is the more useful message, and reporting it
+    # must not depend on whether the (irrelevant, since it will be rejected
+    # regardless) other input happens to parse.
+    if sum(1 for value in (preset, via, gpx) if value) > 1:
         # Spelled out rather than derived from the shared constant: naming the
-        # flag is a CLI concern, and rewriting another module's wording would
+        # flags is a CLI concern, and rewriting another module's wording would
         # break silently if that wording ever changed.
-        _fail("pass either a preset name or --via waypoints, not both")
+        _fail("pass one of a preset name, --via waypoints, or --gpx, not several")
 
     try:
         parsed_via = [parse_waypoint(v) for v in via] if via else None
     except ValueError as exc:
         _fail(str(exc))
+
+    parsed_gpx = None
+    if gpx:
+        try:
+            parsed_gpx = _load_gpx(gpx)
+        except ValueError as exc:
+            _fail(str(exc))
 
     # `resolve_walk` is shared with the HTTP API, so its "not enough
     # waypoints" messages are worded generically. The CLI appends its own
@@ -223,6 +248,7 @@ def walk(
         resolved = resolve_walk(
             preset=preset,
             waypoints=parsed_via,
+            path=parsed_gpx,
             pace=pace,
             speed=speed,
             costing=costing,
@@ -258,11 +284,16 @@ def walk(
             _fail(f"could not open log file {log}: {exc}")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", handlers=handlers)
 
-    try:
-        client = ValhallaClient(base_url=valhalla_url or load_valhalla_url(config), offline=offline)
-        path = client.route(waypoints, costing=resolved.costing)
-    except (RoutingError, ValueError) as exc:
-        _fail(f"routing failed: {exc}")
+    if resolved.literal:
+        path = Path(waypoints)
+    else:
+        try:
+            client = ValhallaClient(
+                base_url=valhalla_url or load_valhalla_url(config), offline=offline
+            )
+            path = client.route(waypoints, costing=resolved.costing)
+        except (RoutingError, ValueError) as exc:
+            _fail(f"routing failed: {exc}")
 
     if loop and not path.is_closed_loop:
         typer.echo(
@@ -271,9 +302,10 @@ def walk(
         )
 
     walker = Walker(path, selected, loop=loop, rng=random.Random(), scatter_m=scatter)
+    costing_note = "literal (no routing)" if resolved.literal else resolved.costing
     typer.echo(
         f"route: {path.length_m / 1000:.2f} km, pace={selected.name} "
-        f"({selected.speed * 3.6:.1f} km/h), costing={resolved.costing}, loop={loop}"
+        f"({selected.speed * 3.6:.1f} km/h), costing={costing_note}, loop={loop}"
     )
 
     async def _run() -> None:

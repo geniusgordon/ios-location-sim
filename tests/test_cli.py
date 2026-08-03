@@ -62,12 +62,15 @@ def test_walk_rejects_no_arguments():
     )
 
 
+_CONFLICT_MESSAGE = "pass one of a preset name, --via waypoints, or --gpx, not several"
+
+
 def test_walk_rejects_preset_and_via_together(tmp_path):
     cfg = tmp_path / "config.toml"
     cfg.write_text("[presets.home]\nwaypoints = [[25.0, 121.0], [25.1, 121.1]]\n")
     result = runner.invoke(app, ["walk", "home", "--via", "25.0,121.0", "--config", str(cfg)])
     assert result.exit_code != 0
-    assert result.stdout.strip() == "pass either a preset name or --via waypoints, not both"
+    assert result.stdout.strip() == _CONFLICT_MESSAGE
 
 
 def test_walk_rejects_preset_and_via_together_even_when_via_is_malformed(tmp_path):
@@ -78,7 +81,60 @@ def test_walk_rejects_preset_and_via_together_even_when_via_is_malformed(tmp_pat
     cfg.write_text("[presets.home]\nwaypoints = [[25.0, 121.0], [25.1, 121.1]]\n")
     result = runner.invoke(app, ["walk", "home", "--via", "garbage", "--config", str(cfg)])
     assert result.exit_code != 0
-    assert result.stdout.strip() == "pass either a preset name or --via waypoints, not both"
+    assert result.stdout.strip() == _CONFLICT_MESSAGE
+
+
+def test_walk_rejects_preset_and_gpx_together(tmp_path):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[presets.home]\nwaypoints = [[25.0, 121.0], [25.1, 121.1]]\n")
+    gpx_file = tmp_path / "track.gpx"
+    gpx_file.write_text("<gpx></gpx>")
+    result = runner.invoke(app, ["walk", "home", "--gpx", str(gpx_file), "--config", str(cfg)])
+    assert result.exit_code != 0
+    assert result.stdout.strip() == _CONFLICT_MESSAGE
+
+
+def test_walk_rejects_via_and_gpx_together(tmp_path):
+    gpx_file = tmp_path / "track.gpx"
+    gpx_file.write_text("<gpx></gpx>")
+    result = runner.invoke(
+        app, ["walk", "--via", "25.0,121.0", "--via", "25.1,121.1", "--gpx", str(gpx_file)]
+    )
+    assert result.exit_code != 0
+    assert result.stdout.strip() == _CONFLICT_MESSAGE
+
+
+def test_walk_gpx_walks_literally_without_routing(monkeypatch, tmp_path):
+    # A GPX track is walked exactly as recorded -- ValhallaClient must never
+    # be constructed, let alone called, for a literal walk.
+    def _boom(*args, **kwargs):
+        raise AssertionError("ValhallaClient should not be used for a literal GPX walk")
+
+    monkeypatch.setattr(cli, "ValhallaClient", _boom)
+    gpx_file = tmp_path / "track.gpx"
+    gpx_file.write_text(
+        "<gpx><trk><trkseg>"
+        '<trkpt lat="25.0" lon="121.0"></trkpt>'
+        '<trkpt lat="25.1" lon="121.1"></trkpt>'
+        "</trkseg></trk></gpx>"
+    )
+    result = runner.invoke(app, ["walk", "--gpx", str(gpx_file), "--duration", "0s"])
+    assert "literal (no routing)" in result.stdout
+
+
+def test_walk_gpx_missing_file_reports_cleanly(tmp_path):
+    missing = tmp_path / "nope.gpx"
+    result = runner.invoke(app, ["walk", "--gpx", str(missing)])
+    assert result.exit_code != 0
+    assert "Traceback" not in result.stdout
+
+
+def test_walk_gpx_malformed_file_reports_cleanly(tmp_path):
+    gpx_file = tmp_path / "track.gpx"
+    gpx_file.write_text("not xml at all <<<")
+    result = runner.invoke(app, ["walk", "--gpx", str(gpx_file)])
+    assert result.exit_code != 0
+    assert "not valid XML" in result.stdout
 
 
 def test_walk_help_exposes_no_clear_and_no_loop():

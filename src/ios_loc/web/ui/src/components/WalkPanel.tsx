@@ -1,5 +1,16 @@
-import { useState } from "react"
-import { Check, ClipboardPaste, MapPin, Play, RefreshCw, Save, Square, Trash2, Undo2 } from "lucide-react"
+import { useRef, useState } from "react"
+import {
+  Check,
+  ClipboardPaste,
+  MapPin,
+  Play,
+  RefreshCw,
+  Save,
+  Square,
+  Trash2,
+  Undo2,
+  Upload,
+} from "lucide-react"
 import type { Pace, Preset, WalkStateName } from "@/api/types"
 import { errorText, savePreset, startWalk, stopWalk } from "@/api/client"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -28,6 +39,7 @@ import { Textarea } from "@/components/ui/textarea"
 import LibraryRow from "@/components/LibraryRow"
 import { COSTINGS } from "@/lib/costings"
 import { pasteRoute, type DraftRoute, type DraftSettings } from "@/lib/draft"
+import { gpxToRoute } from "@/lib/gpx"
 import { formatDistance, formatDuration, formatPaceSpeed, formatSpeed } from "@/lib/format"
 import { canStart, startBody } from "@/lib/startBody"
 import { canStop, showsLiveDock } from "@/state/walkReducer"
@@ -248,6 +260,7 @@ export default function WalkPanel(props: WalkPanelProps) {
   // Defaults to literal (today's behavior) every time the dialog opens, rather
   // than remembering the last choice.
   const [pasteLiteral, setPasteLiteral] = useState(true)
+  const gpxInputRef = useRef<HTMLInputElement>(null)
 
   const set = <K extends keyof DraftSettings>(key: K, value: DraftSettings[K]) => {
     props.onSettingsChange({ ...props.settings, [key]: value })
@@ -327,6 +340,25 @@ export default function WalkPanel(props: WalkPanelProps) {
     props.onPaste(result)
   }
 
+  // A GPX track is walked exactly as recorded by default -- same reasoning as
+  // a paste's default (see pasteLiteral above). Errors surface through the
+  // same paste dialog rather than a second error surface for one more input.
+  const onGpxFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file) return
+    const text = await file.text()
+    const result = gpxToRoute(text, true)
+    if ("error" in result) {
+      setPasteText("")
+      setPasteLiteral(true)
+      setPasteError(result.error)
+      setPasteOpen(true)
+      return
+    }
+    props.onPaste(result)
+  }
+
   const empty = props.route.waypoints.length === 0
 
   // `pace: null` means "inherit the default", which the backend resolves to
@@ -367,6 +399,21 @@ export default function WalkPanel(props: WalkPanelProps) {
             }}
           >
             <ClipboardPaste className="size-4" />
+          </Button>
+          <input
+            ref={gpxInputRef}
+            type="file"
+            accept=".gpx,application/gpx+xml"
+            className="hidden"
+            onChange={onGpxFile}
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Import GPX"
+            onClick={() => gpxInputRef.current?.click()}
+          >
+            <Upload className="size-4" />
           </Button>
           <Button
             variant="ghost"

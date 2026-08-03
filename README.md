@@ -97,6 +97,9 @@ uv run ios-loc walk --via 25.033,121.565 --via 25.038,121.568 --pace bike --cost
 uv run ios-loc walk home-loop
 uv run ios-loc presets list
 
+# Walk a recorded GPX track exactly as-is -- no Valhalla routing
+uv run ios-loc walk --gpx morning-run.gpx --loop --duration 1h
+
 # Hold a fixed point
 uv run ios-loc set 25.0330 121.5654
 
@@ -112,6 +115,12 @@ Other `walk` options worth knowing: `--speed` (m/s, overrides the pace),
 `--scatter` (GPS noise in metres, default 3), `--duration` (`90s`, `20m`, `3h`),
 `--offline`, `--log FILE`, `--no-clear` to leave the last position in place on
 exit, and `--udid` to pick between multiple connected devices.
+
+`--gpx FILE` is a third way to give `walk` a route, alongside a preset name and
+`--via` — pass exactly one of the three. It reads `<trkpt>` points (every
+`<trkseg>` concatenated in document order), falling back to `<rtept>` then
+`<wpt>` if the file has no track. The points are walked exactly as recorded,
+with no Valhalla call, so `--costing` has no effect on a GPX walk.
 
 ## Map GUI
 
@@ -150,6 +159,11 @@ you are on decides what a map tap does:
   `ios-loc walk <name>` works on anything you draw, and your saved routes are
   listed below the editor. While a walk runs, this tab becomes the live view —
   elapsed, distance, speed, laps, reconnects, and a Stop button.
+  Two buttons load a route from outside the map: paste coordinates (`lat,
+  lon` per line, with a "Route between these points" toggle to send them
+  through Valhalla instead of walking them exactly as given), and import GPX
+  — reads `<trkpt>` (falling back to `<rtept>`, then `<wpt>`), same priority as
+  `ios-loc walk --gpx`, and always walked exactly as recorded.
 
 While a walk runs, the map follows the live dot with a fading trail of the last
 120 fixes; panning detaches following and the crosshair button reattaches it.
