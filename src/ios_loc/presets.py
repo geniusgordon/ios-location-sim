@@ -99,15 +99,15 @@ DEFAULT_PACES: dict[str, Pace] = {
     "walk": Pace(
         name="walk",
         speed=1.3,
-        jitter=0.08,
+        jitter=0.04,
         pause_per_min=0.15,
         pause_min_s=5,
         pause_max_s=30,
     ),
     "bike": Pace(
         name="bike",
-        speed=4.2,
-        jitter=0.12,
+        speed=5.0,
+        jitter=0.06,
         pause_per_min=0.02,
         pause_min_s=10,
         pause_max_s=40,
