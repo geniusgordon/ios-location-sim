@@ -62,6 +62,21 @@ function tone(state: WalkStateName): "default" | "secondary" | "destructive" {
   return "secondary"
 }
 
+/** The selected-tab look, applied at the call site from the controlled value
+ *  -- same reasoning as `Sidebar.tsx`'s `activeTabClass`: the caller already
+ *  knows which tab is active, rather than depending on the primitive's own
+ *  data attribute. */
+function activeTabClass(active: boolean): string {
+  return active ? "bg-background text-foreground shadow-sm" : ""
+}
+
+const GPX_POINT_TYPE_HELP: Record<GpxPointType, string> = {
+  auto: "Reads track points, falling back to route points, then waypoints.",
+  trkpt: "Reads only track points (<trkpt>).",
+  rtept: "Reads only route points (<rtept>).",
+  wpt: "Reads only waypoints (<wpt>).",
+}
+
 /**
  * `paused` is not a WalkState -- the server models it per-fix (`Fix.paused`,
  * the walker's random rest stops). Shown because a stationary dot with no
@@ -646,8 +661,12 @@ export default function WalkPanel(props: WalkPanelProps) {
 
           <Tabs value={importTab} onValueChange={(value) => setImportTab(value as "coords" | "gpx")}>
             <TabsList>
-              <TabsTab value="coords">Coordinates</TabsTab>
-              <TabsTab value="gpx">GPX</TabsTab>
+              <TabsTab value="coords" className={activeTabClass(importTab === "coords")}>
+                Coordinates
+              </TabsTab>
+              <TabsTab value="gpx" className={activeTabClass(importTab === "gpx")}>
+                GPX
+              </TabsTab>
             </TabsList>
             <TabsPanel value="coords" className="grid gap-2">
               <Label htmlFor="paste-coords">Coordinates</Label>
@@ -700,12 +719,16 @@ export default function WalkPanel(props: WalkPanelProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="auto">Auto (track, then route, then waypoints)</SelectItem>
-                    <SelectItem value="trkpt">Track points (trkpt)</SelectItem>
-                    <SelectItem value="rtept">Route points (rtept)</SelectItem>
-                    <SelectItem value="wpt">Waypoints (wpt)</SelectItem>
+                    <SelectItem value="auto">auto</SelectItem>
+                    <SelectItem value="trkpt">trkpt</SelectItem>
+                    <SelectItem value="rtept">rtept</SelectItem>
+                    <SelectItem value="wpt">wpt</SelectItem>
                   </SelectContent>
                 </Select>
+                {/* Short values in the select itself (it shares the app's
+                    compact-select convention -- see Pace/Routing mode above),
+                    the long-form explanation spelled out underneath instead. */}
+                <p className="text-muted-foreground text-xs">{GPX_POINT_TYPE_HELP[gpxPointType]}</p>
               </div>
             </TabsPanel>
           </Tabs>
