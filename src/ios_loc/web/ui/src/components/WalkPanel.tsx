@@ -35,11 +35,12 @@ import {
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
+import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import LibraryRow from "@/components/LibraryRow"
 import { COSTINGS } from "@/lib/costings"
 import { pasteRoute, type DraftRoute, type DraftSettings } from "@/lib/draft"
-import { gpxToRoute } from "@/lib/gpx"
+import { gpxToRoute, type GpxPointType } from "@/lib/gpx"
 import { formatDistance, formatDuration, formatPaceSpeed, formatSpeed } from "@/lib/format"
 import { canStart, startBody } from "@/lib/startBody"
 import { canStop, showsLiveDock } from "@/state/walkReducer"
@@ -254,11 +255,15 @@ export default function WalkPanel(props: WalkPanelProps) {
   const [saveName, setSaveName] = useState("")
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [pasteOpen, setPasteOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importTab, setImportTab] = useState<"coords" | "gpx">("coords")
   const [pasteText, setPasteText] = useState("")
-  const [pasteError, setPasteError] = useState<string | null>(null)
+  const [gpxText, setGpxText] = useState("")
+  const [gpxPointType, setGpxPointType] = useState<GpxPointType>("auto")
+  const [importError, setImportError] = useState<string | null>(null)
   // Defaults to literal (today's behavior) every time the dialog opens, rather
-  // than remembering the last choice.
+  // than remembering the last choice. Shared by both tabs -- it means the same
+  // thing for a pasted coordinate list and a GPX track.
   const [pasteLiteral, setPasteLiteral] = useState(true)
   const gpxInputRef = useRef<HTMLInputElement>(null)
 
@@ -324,39 +329,34 @@ export default function WalkPanel(props: WalkPanelProps) {
     }
   }
 
-  const onPasteSubmit = () => {
-    const result = pasteRoute(pasteText, pasteLiteral)
+  const onImportSubmit = () => {
+    const result =
+      importTab === "coords"
+        ? pasteRoute(pasteText, pasteLiteral)
+        : gpxToRoute(gpxText, pasteLiteral, gpxPointType)
     if ("error" in result) {
-      setPasteError(result.error)
+      setImportError(result.error)
       return
     }
-    setPasteError(null)
-    setPasteOpen(false)
+    setImportError(null)
+    setImportOpen(false)
     setPasteText("")
-    // "Route between these points" is about turning a pasted list into a
+    setGpxText("")
+    // "Route between these points" is about turning an imported list into a
     // walkable route, not about picking a travel mode -- always plan it on
     // foot regardless of whatever Routing mode the select last showed.
     if (!pasteLiteral) props.onSettingsChange({ ...props.settings, costing: "pedestrian" })
     props.onPaste(result)
   }
 
-  // A GPX track is walked exactly as recorded by default -- same reasoning as
-  // a paste's default (see pasteLiteral above). Errors surface through the
-  // same paste dialog rather than a second error surface for one more input.
+  // Loads a file's text into the GPX tab's textarea rather than importing it
+  // straight away -- same submit path as pasted GPX text, so a file pick is
+  // just a way to fill the textarea instead of typing into it.
   const onGpxFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ""
     if (!file) return
-    const text = await file.text()
-    const result = gpxToRoute(text, true)
-    if ("error" in result) {
-      setPasteText("")
-      setPasteLiteral(true)
-      setPasteError(result.error)
-      setPasteOpen(true)
-      return
-    }
-    props.onPaste(result)
+    setGpxText(await file.text())
   }
 
   const empty = props.route.waypoints.length === 0
@@ -390,30 +390,18 @@ export default function WalkPanel(props: WalkPanelProps) {
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Paste coordinates"
+            aria-label="Import route"
             onClick={() => {
-              setPasteError(null)
+              setImportError(null)
               setPasteText("")
+              setGpxText("")
+              setGpxPointType("auto")
               setPasteLiteral(true)
-              setPasteOpen(true)
+              setImportTab("coords")
+              setImportOpen(true)
             }}
           >
             <ClipboardPaste className="size-4" />
-          </Button>
-          <input
-            ref={gpxInputRef}
-            type="file"
-            accept=".gpx,application/gpx+xml"
-            className="hidden"
-            onChange={onGpxFile}
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Import GPX"
-            onClick={() => gpxInputRef.current?.click()}
-          >
-            <Upload className="size-4" />
           </Button>
           <Button
             variant="ghost"
@@ -649,46 +637,104 @@ export default function WalkPanel(props: WalkPanelProps) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={pasteOpen} onOpenChange={setPasteOpen}>
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Paste coordinates</DialogTitle>
-            <DialogDescription>
-              One <code>latitude, longitude</code> pair per line. Replaces the current route.
-            </DialogDescription>
+            <DialogTitle>Import a route</DialogTitle>
+            <DialogDescription>Replaces the current route.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-2">
-            <Label htmlFor="paste-coords">Coordinates</Label>
-            <Textarea
-              id="paste-coords"
-              rows={10}
-              className="min-h-40 font-mono text-xs"
-              placeholder={"19.0370900, 78.6447320\n19.0381340, 78.6466280"}
-              value={pasteText}
-              onChange={(event) => setPasteText(event.target.value)}
-            />
-          </div>
+
+          <Tabs value={importTab} onValueChange={(value) => setImportTab(value as "coords" | "gpx")}>
+            <TabsList>
+              <TabsTab value="coords">Coordinates</TabsTab>
+              <TabsTab value="gpx">GPX</TabsTab>
+            </TabsList>
+            <TabsPanel value="coords" className="grid gap-2">
+              <Label htmlFor="paste-coords">Coordinates</Label>
+              <Textarea
+                id="paste-coords"
+                rows={10}
+                className="min-h-40 font-mono text-xs"
+                placeholder={"19.0370900, 78.6447320\n19.0381340, 78.6466280"}
+                value={pasteText}
+                onChange={(event) => setPasteText(event.target.value)}
+              />
+              <p className="text-muted-foreground text-xs">
+                One <code>latitude, longitude</code> pair per line.
+              </p>
+            </TabsPanel>
+            <TabsPanel value="gpx" className="grid gap-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="paste-gpx">GPX</Label>
+                <input
+                  ref={gpxInputRef}
+                  type="file"
+                  accept=".gpx,application/gpx+xml"
+                  className="hidden"
+                  onChange={onGpxFile}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => gpxInputRef.current?.click()}
+                >
+                  <Upload className="size-4" /> Choose file…
+                </Button>
+              </div>
+              <Textarea
+                id="paste-gpx"
+                rows={10}
+                className="min-h-40 font-mono text-xs"
+                placeholder={'<gpx>\n  <trk><trkseg>\n    <trkpt lat="..." lon="..."/>\n  </trkseg></trk>\n</gpx>'}
+                value={gpxText}
+                onChange={(event) => setGpxText(event.target.value)}
+              />
+              <div className="grid gap-2">
+                <Label htmlFor="gpx-point-type">Read points from</Label>
+                <Select
+                  value={gpxPointType}
+                  onValueChange={(value) => setGpxPointType(value as GpxPointType)}
+                >
+                  <SelectTrigger id="gpx-point-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto (track, then route, then waypoints)</SelectItem>
+                    <SelectItem value="trkpt">Track points (trkpt)</SelectItem>
+                    <SelectItem value="rtept">Route points (rtept)</SelectItem>
+                    <SelectItem value="wpt">Waypoints (wpt)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </TabsPanel>
+          </Tabs>
+
           <div className="flex items-center gap-2">
             <Switch
-              id="paste-route"
+              id="import-route"
               checked={!pasteLiteral}
               onCheckedChange={(checked) => setPasteLiteral(!checked)}
             />
-            <Label htmlFor="paste-route">Route between these points</Label>
+            <Label htmlFor="import-route">Route between these points</Label>
           </div>
           <p className="text-muted-foreground text-xs">
             {pasteLiteral
               ? "Walked exactly as given — no road-snapping."
               : "Planned as a pedestrian route connecting these points."}
           </p>
-          {pasteError ? (
+
+          {importError ? (
             <Alert variant="destructive">
               <AlertTitle>Could not parse</AlertTitle>
-              <AlertDescription>{pasteError}</AlertDescription>
+              <AlertDescription>{importError}</AlertDescription>
             </Alert>
           ) : null}
           <DialogFooter>
-            <Button disabled={pasteText.trim().length === 0} onClick={onPasteSubmit}>
+            <Button
+              disabled={(importTab === "coords" ? pasteText : gpxText).trim().length === 0}
+              onClick={onImportSubmit}
+            >
               <ClipboardPaste className="size-4" /> Use these points
             </Button>
           </DialogFooter>

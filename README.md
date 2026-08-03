@@ -159,11 +159,13 @@ you are on decides what a map tap does:
   `ios-loc walk <name>` works on anything you draw, and your saved routes are
   listed below the editor. While a walk runs, this tab becomes the live view —
   elapsed, distance, speed, laps, reconnects, and a Stop button.
-  Two buttons load a route from outside the map: paste coordinates (`lat,
-  lon` per line, with a "Route between these points" toggle to send them
-  through Valhalla instead of walking them exactly as given), and import GPX
-  — reads `<trkpt>` (falling back to `<rtept>`, then `<wpt>`), same priority as
-  `ios-loc walk --gpx`, and always walked exactly as recorded.
+  The Import route button loads a route from outside the map, with a
+  Coordinates tab (`lat, lon` per line) and a GPX tab (paste GPX text or
+  choose a file; a "Read points from" select picks `<trkpt>`/`<rtept>`/`<wpt>`
+  or leaves it on auto, same priority as `ios-loc walk --gpx`). A shared
+  "Route between these points" toggle applies to either tab: on, the points
+  are sent through Valhalla; off (the default), they're walked exactly as
+  given.
 
 While a walk runs, the map follows the live dot with a fading trail of the last
 120 fixes; panning detaches following and the crosshair button reattaches it.

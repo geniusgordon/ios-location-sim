@@ -105,4 +105,28 @@ describe("gpxToRoute", () => {
     const result = gpxToRoute(gpx, true)
     expect("error" in result && result.error).toMatch(/no <trkpt>, <rtept>, or <wpt>/)
   })
+
+  it("an explicit pointType reads only that element kind", () => {
+    const gpx = wrap(`
+      <wpt lat="1.0" lon="1.0"></wpt>
+      <wpt lat="1.1" lon="1.1"></wpt>
+      <trk><trkseg>
+        <trkpt lat="25.0" lon="121.0"></trkpt>
+        <trkpt lat="25.1" lon="121.1"></trkpt>
+      </trkseg></trk>
+    `)
+    expect(gpxToRoute(gpx, true, "wpt")).toEqual({
+      waypoints: [
+        [1.0, 1.0],
+        [1.1, 1.1],
+      ],
+      name: null,
+      literal: true,
+    })
+  })
+
+  it("an explicit pointType errors when that element kind is absent", () => {
+    const gpx = wrap(`<trk><trkseg><trkpt lat="25.0" lon="121.0"></trkpt><trkpt lat="25.1" lon="121.1"></trkpt></trkseg></trk>`)
+    expect(gpxToRoute(gpx, true, "rtept")).toEqual({ error: "GPX file has no <rtept> points" })
+  })
 })
