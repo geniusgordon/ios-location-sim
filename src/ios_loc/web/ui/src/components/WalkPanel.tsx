@@ -70,12 +70,12 @@ function activeTabClass(active: boolean): string {
   return active ? "bg-background text-foreground shadow-sm" : ""
 }
 
-const GPX_POINT_TYPE_HELP: Record<GpxPointType, string> = {
-  auto: "Reads track points, falling back to route points, then waypoints.",
-  trkpt: "Reads only track points (<trkpt>).",
-  rtept: "Reads only route points (<rtept>).",
-  wpt: "Reads only waypoints (<wpt>).",
-}
+const GPX_POINT_TYPE_OPTIONS: { value: GpxPointType; description: string }[] = [
+  { value: "auto", description: "Track, then route, then waypoints" },
+  { value: "trkpt", description: "Track points only" },
+  { value: "rtept", description: "Route points only" },
+  { value: "wpt", description: "Waypoints only" },
+]
 
 /**
  * `paused` is not a WalkState -- the server models it per-fix (`Fix.paused`,
@@ -718,17 +718,20 @@ export default function WalkPanel(props: WalkPanelProps) {
                   <SelectTrigger id="gpx-point-type">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">auto</SelectItem>
-                    <SelectItem value="trkpt">trkpt</SelectItem>
-                    <SelectItem value="rtept">rtept</SelectItem>
-                    <SelectItem value="wpt">wpt</SelectItem>
+                  {/* Wider than the (narrow, single-word) trigger: the popup
+                      otherwise inherits the trigger's width and clips these
+                      two-line items -- see gpx.ts's point-type overflow fix. */}
+                  <SelectContent className="w-72">
+                    {GPX_POINT_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value} className="items-start py-2">
+                        <span className="flex flex-col whitespace-normal">
+                          <span className="font-medium">{option.value}</span>
+                          <span className="text-muted-foreground text-xs">{option.description}</span>
+                        </span>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
-                {/* Short values in the select itself (it shares the app's
-                    compact-select convention -- see Pace/Routing mode above),
-                    the long-form explanation spelled out underneath instead. */}
-                <p className="text-muted-foreground text-xs">{GPX_POINT_TYPE_HELP[gpxPointType]}</p>
               </div>
             </TabsPanel>
           </Tabs>
