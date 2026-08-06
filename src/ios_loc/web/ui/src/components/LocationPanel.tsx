@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { MapPin, Pin, Save, X } from "lucide-react"
+import { Clock, MapPin, Pin, Save, X } from "lucide-react"
 import type { LatLon, Place } from "@/api/types"
 import { errorText, pinLocation, savePlace } from "@/api/client"
 import { Button } from "@/components/ui/button"
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import LibraryRow from "@/components/LibraryRow"
 import { formatLatLon, parseLatLon } from "@/lib/coords"
+import type { RecentLocation } from "@/lib/recentLocations"
 
 export interface LocationPanelProps {
   /** A walk owns the device -- setting mid-walk 409s. Disables the controls. */
@@ -29,6 +30,10 @@ export interface LocationPanelProps {
   placesLoading: boolean
   onSelectPlace(place: Place): void
   onDeletePlace(name: string): Promise<void>
+  /** Browser-local history of previously set points, newest first. */
+  recents: RecentLocation[]
+  onSelectRecent(point: LatLon): void
+  onRemoveRecent(point: LatLon): void
 }
 
 export default function LocationPanel(props: LocationPanelProps) {
@@ -182,6 +187,42 @@ export default function LocationPanel(props: LocationPanelProps) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {props.recents.length > 0 ? (
+          <div className="border-b">
+            <h3 className="text-muted-foreground px-4 pt-4 pb-1 text-xs font-medium tracking-wide uppercase">
+              Recent
+            </h3>
+            <ul className="divide-border divide-y">
+              {props.recents.map((recent) => (
+                <li key={`${recent.point[0]},${recent.point[1]}`} className="flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => props.onSelectRecent(recent.point)}
+                    disabled={props.disabled}
+                    className={`flex min-w-0 flex-1 items-center gap-3 px-4 py-2 text-left ${
+                      props.disabled ? "cursor-not-allowed opacity-50" : "hover:bg-accent"
+                    }`}
+                  >
+                    <Clock className="text-muted-foreground size-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate font-mono text-sm">
+                      {formatLatLon(recent.point)}
+                    </span>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mr-2 shrink-0"
+                    aria-label={`Remove ${formatLatLon(recent.point)} from recent locations`}
+                    onClick={() => props.onRemoveRecent(recent.point)}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         <h3 className="text-muted-foreground px-4 pt-4 pb-1 text-xs font-medium tracking-wide uppercase">
           Saved places
         </h3>

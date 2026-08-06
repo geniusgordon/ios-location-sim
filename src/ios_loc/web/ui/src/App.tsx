@@ -23,6 +23,7 @@ import {
   type DraftSettings,
 } from "@/lib/draft"
 import { deviceIndicator } from "@/lib/deviceIndicator"
+import { addRecent, loadRecents, removeRecent, type RecentLocation } from "@/lib/recentLocations"
 import { canStop, isRunning, showsLiveDock } from "@/state/walkReducer"
 
 export default function App() {
@@ -38,6 +39,10 @@ export default function App() {
   // The last point the device was pinned at, from either pin path. Gates the
   // "save this place" form: there is never a save button with nothing to save.
   const [lastPin, setLastPin] = useState<LatLon | null>(null)
+  // Browser-local history of set-location points, newest first. Unlike saved
+  // places this is never sent to the server -- it is a recency aid, not
+  // something worth persisting to config.toml.
+  const [recents, setRecents] = useState<RecentLocation[]>(() => loadRecents())
   const [paces, setPaces] = useState<Pace[]>([])
   const [offline, setOffline] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -62,10 +67,15 @@ export default function App() {
   const handlePinned = useCallback(
     (point: LatLon, opts?: { recenter?: boolean }) => {
       setLastPin(point)
+      setRecents(addRecent(point))
       if (opts?.recenter) recenterTo(point)
     },
     [recenterTo],
   )
+
+  const handleRemoveRecent = useCallback((point: LatLon) => {
+    setRecents(removeRecent(point))
+  }, [])
 
   const handleClear = useCallback(async () => {
     await stopWalk()
@@ -208,6 +218,16 @@ export default function App() {
             await deletePlace(name)
             reloadPlaces()
           }}
+          recents={recents}
+          onSelectRecent={(point) => {
+            setPinError(null)
+            handlePinned(point, { recenter: true })
+            if (indicator.connected) {
+              void pinLocation(point[0], point[1]).catch((error: unknown) => setPinError(errorText(error)))
+            }
+            revealMap()
+          }}
+          onRemoveRecent={handleRemoveRecent}
           route={route}
           settings={settings}
           onSettingsChange={setSettings}

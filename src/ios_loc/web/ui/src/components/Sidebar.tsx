@@ -7,6 +7,7 @@ import LocationPanel from "@/components/LocationPanel"
 import WalkPanel from "@/components/WalkPanel"
 import type { DraftRoute, DraftSettings } from "@/lib/draft"
 import type { DeviceIndicator } from "@/lib/deviceIndicator"
+import type { RecentLocation } from "@/lib/recentLocations"
 
 export type SidebarTab = "location" | "walk"
 
@@ -36,6 +37,9 @@ export interface SidebarProps {
   placesLoading: boolean
   onSelectPlace(place: Place): void
   onDeletePlace(name: string): Promise<void>
+  recents: RecentLocation[]
+  onSelectRecent(point: LatLon): void
+  onRemoveRecent(point: LatLon): void
 
   // Walk tab
   route: DraftRoute
@@ -115,6 +119,9 @@ export default function Sidebar(props: SidebarProps) {
             placesLoading={props.placesLoading}
             onSelectPlace={props.onSelectPlace}
             onDeletePlace={props.onDeletePlace}
+            recents={props.recents}
+            onSelectRecent={props.onSelectRecent}
+            onRemoveRecent={props.onRemoveRecent}
           />
         </TabsPanel>
 
