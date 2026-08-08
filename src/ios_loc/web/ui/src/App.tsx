@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { PanelLeftOpen } from "lucide-react"
 import type { LatLon, Pace, Place, Preset } from "@/api/types"
-import { deletePlace, deletePreset, errorText, getPlaces, getPresets, pinLocation, stopWalk } from "@/api/client"
+import {
+  deletePlace,
+  deletePreset,
+  errorText,
+  getPlaces,
+  getPresets,
+  patchReroute,
+  pinLocation,
+  stopWalk,
+} from "@/api/client"
 import MapView from "@/components/MapView"
 import Sidebar, { type SidebarTab } from "@/components/Sidebar"
 import { Button } from "@/components/ui/button"
 import { useDeviceStatus } from "@/hooks/useDeviceStatus"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useRoutePreview } from "@/hooks/useRoutePreview"
-import { useWalkStream, useWalkMeta } from "@/hooks/useWalkStream"
+import { useWalkStream, useWalkMeta, walkStore } from "@/hooks/useWalkStream"
 import {
   addWaypoint,
   clearRoute,
@@ -138,6 +147,37 @@ export default function App() {
   // Map-first: editable whenever no walk holds the device.
   const editing = !isRunning(meta.state)
 
+  // Points appended ahead of a running walk, not yet applied. A plain array,
+  // not a DraftRoute: append-only, so name/literal (meaningful only for the
+  // pre-start editor) don't apply here. `rerouteAnchor` is the live position
+  // the draft started from, read imperatively from `walkStore` (never
+  // subscribed -- App must not re-render on every 1 Hz fix) so the preview
+  // has a fixed start point instead of sliding with every tick.
+  const [rerouteDraft, setRerouteDraft] = useState<LatLon[]>([])
+  const rerouteAnchor = useRef<LatLon | null>(null)
+
+  // A walk ending (stopped, finished, lost) leaves no route to extend.
+  useEffect(() => {
+    if (!isRunning(meta.state)) {
+      setRerouteDraft([])
+      rerouteAnchor.current = null
+    }
+  }, [meta.state])
+
+  const onApplyReroute = useCallback(async () => {
+    await patchReroute(rerouteDraft)
+    setRerouteDraft([])
+    rerouteAnchor.current = null
+  }, [rerouteDraft])
+
+  const onUndoRerouteWaypoint = useCallback(() => {
+    setRerouteDraft((points) => {
+      const next = points.slice(0, -1)
+      if (next.length === 0) rerouteAnchor.current = null
+      return next
+    })
+  }, [])
+
   // A running walk (or a finished/lost run whose summary is still up) belongs on
   // the Walk tab -- that is where the live view and Stop button live. Force it
   // so the live view is never hidden behind the Set-location tab.
@@ -160,7 +200,22 @@ export default function App() {
   // so a map-first route draws as a line rather than disconnected dots. A
   // literal (pasted) route has nothing to preview -- there is no routing call
   // to make -- so it is drawn straight from its own points instead (below).
-  const preview = useRoutePreview(route.waypoints, settings.costing, !offline && editing && !route.literal)
+  //
+  // While a walk is running and the walk tab is active, this same hook
+  // previews the pending *reroute* instead: the live-position anchor plus
+  // whatever's been appended so far. That's also what keeps the dashed line
+  // from disappearing on walk start -- it simply has a different source of
+  // waypoints once running.
+  const running = isRunning(meta.state)
+  const rerouteWaypoints =
+    rerouteDraft.length > 0 && rerouteAnchor.current
+      ? [rerouteAnchor.current, ...rerouteDraft]
+      : []
+  const preview = useRoutePreview(
+    running ? rerouteWaypoints : route.waypoints,
+    settings.costing,
+    !offline && !route.literal && (editing || (running && tab === "walk")),
+  )
   const lengthM = route.literal ? routeLengthM(route.waypoints) : preview.lengthM
 
   // Selecting a saved thing on mobile collapses the overlay so the result is
@@ -179,6 +234,17 @@ export default function App() {
       if (indicator.connected) {
         void pinLocation(point[0], point[1]).catch((error: unknown) => setPinError(errorText(error)))
       }
+      return
+    }
+    if (running && tab === "walk") {
+      // Extend the running walk ahead of its live position -- append only, no
+      // editing of the original (already-consumed) draft. The active tab
+      // decides what a tap does, same rule as the location/route branch above.
+      if (rerouteDraft.length === 0) {
+        const fix = walkStore.getModel().fix
+        rerouteAnchor.current = fix ? [fix.lat, fix.lon] : point
+      }
+      setRerouteDraft((points) => [...points, point])
       return
     }
     setPinError(null)
@@ -235,6 +301,9 @@ export default function App() {
           routePending={preview.pending}
           routeError={preview.error}
           loadError={loadError}
+          pendingReroute={rerouteDraft}
+          onApplyReroute={onApplyReroute}
+          onUndoRerouteWaypoint={onUndoRerouteWaypoint}
           paces={paces}
           offline={offline}
           onRemoveLast={() => {
@@ -284,9 +353,17 @@ export default function App() {
 
       <div className="relative min-h-0 flex-1">
         <MapView
-          draftWaypoints={route.waypoints}
-          draftRoute={route.literal ? route.waypoints : preview.route}
-          editing={editing}
+          draftWaypoints={running ? [] : route.waypoints}
+          draftRoute={
+            running
+              ? rerouteDraft.length > 0
+                ? preview.route
+                : []
+              : route.literal
+                ? route.waypoints
+                : preview.route
+          }
+          editing={running ? tab === "walk" : true}
           mode={tab === "location" ? "location" : "route"}
           centerOn={centerOn}
           pickedPoint={canStop(meta.state) ? null : lastPin}

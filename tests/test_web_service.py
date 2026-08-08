@@ -3,9 +3,10 @@ import asyncio
 import pytest
 
 from ios_loc.presets import DEFAULT_PACES
+from ios_loc.routing import RoutingError
 from ios_loc.session import SessionLost
 from ios_loc.web.models import WalkState, WalkStatus
-from ios_loc.web.service import StartSpec, WalkAlreadyRunning, WalkService
+from ios_loc.web.service import RerouteNotRunning, StartSpec, WalkAlreadyRunning, WalkService
 from tests.conftest import SQUARE, FakeRouteClient, FakeSession, VirtualClock
 
 
@@ -144,6 +145,117 @@ async def test_stop_after_natural_finish_clears_the_finished_run():
     assert status.route == []
     assert status.trail == []
     assert status.stats is None
+
+
+async def test_natural_finish_leaves_device_uncleared():
+    service, session = make_service()
+    await service.start(spec(duration_s=5.0))
+    await service.wait_finished()
+
+    assert service.status().state is WalkState.FINISHED
+    assert session.stop_calls == 1
+    assert session.stop_clear_calls == [False]
+
+
+async def test_error_finish_still_clears_the_device():
+    session = FakeSession(fail_with=SessionLost("device unreachable"), fail_on=3)
+    service, _ = make_service(session=session)
+    await service.start(spec(duration_s=10.0))
+    await service.wait_finished()
+
+    assert service.status().state is WalkState.ERROR
+    assert session.stop_clear_calls == [True]
+
+
+async def test_natural_finish_then_stop_then_new_walk_starts_fresh():
+    """The device sticks after a natural finish; Done clears bookkeeping only.
+
+    Starting a new walk afterward must behave exactly as if nothing had
+    happened -- a fresh session is opened and driven normally.
+    """
+    service, session = make_service()
+    await service.start(spec(duration_s=5.0))
+    await service.wait_finished()
+    assert session.stop_clear_calls == [False]
+
+    await service.stop()
+    assert service.status().state is WalkState.IDLE
+
+    await service.start(spec(duration_s=3.0))
+    await service.wait_finished()
+
+    status = service.status()
+    assert status.state is WalkState.FINISHED
+    assert status.stats.ticks == 3
+    # The second walk's natural finish also sticks -- another clear=False.
+    assert session.stop_clear_calls == [False, False]
+
+
+async def _run_one_tick(service, walk_spec=None):
+    """Start an indefinite walk and let it produce exactly one fix."""
+    await service.start(walk_spec if walk_spec is not None else spec())
+    while service.status().fix is None:
+        await asyncio.sleep(0)
+
+
+async def test_reroute_while_running_updates_path_and_status():
+    route_client = FakeRouteClient()
+    service, _ = make_service(route_client=route_client)
+    await _run_one_tick(service)
+    fix = service.status().fix
+
+    status = await service.reroute([(25.05, 121.05)])
+
+    assert status.state is WalkState.WALKING
+    assert route_client.calls[-1] == ([(fix.lat, fix.lon), (25.05, 121.05)], "pedestrian")
+    # The new (fake) route replaces the old one.
+    assert status.route == [[lat, lon] for lat, lon in SQUARE]
+    await service.stop()
+
+
+async def test_reroute_when_idle_is_refused():
+    service, _ = make_service()
+    with pytest.raises(RerouteNotRunning):
+        await service.reroute([(25.05, 121.05)])
+
+
+async def test_reroute_before_first_fix_is_refused():
+    service, _ = make_service()
+    await service.start(spec())
+    with pytest.raises(RerouteNotRunning):
+        await service.reroute([(25.05, 121.05)])
+    await service.stop()
+
+
+async def test_reroute_on_a_looping_walk_is_refused():
+    service, _ = make_service()
+    await _run_one_tick(service, spec(loop=True))
+    with pytest.raises(RerouteNotRunning):
+        await service.reroute([(25.05, 121.05)])
+    await service.stop()
+
+
+async def test_reroute_routing_failure_leaves_the_walk_running_on_its_old_path():
+    route_client = FakeRouteClient()
+    service, _ = make_service(route_client=route_client)
+    await _run_one_tick(service)
+    old_path_coords = service.status().route
+
+    route_client.error = RoutingError("valhalla said no")
+    with pytest.raises(RoutingError):
+        await service.reroute([(25.05, 121.05)])
+
+    assert service.status().route == old_path_coords
+    assert service.status().state is WalkState.WALKING
+    await service.stop()
+
+
+async def test_reroute_is_serialized_with_stop():
+    service, _ = make_service()
+    await _run_one_tick(service)
+    await service.stop()
+    with pytest.raises(RerouteNotRunning):
+        await service.reroute([(25.05, 121.05)])
 
 
 async def test_concurrent_start_calls_exactly_one_wins():

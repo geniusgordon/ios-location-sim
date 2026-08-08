@@ -173,6 +173,22 @@ describe("applyMessage: state", () => {
   })
 })
 
+describe("applyMessage: route", () => {
+  it("replaces the route and length without touching fix/stats/trail", () => {
+    const before = fromStatus(status)
+    const after = applyMessage(before, {
+      type: "route",
+      route: [[25.05, 121.05], [25.06, 121.06]],
+      length_m: 400,
+    })
+    expect(after.route).toEqual([[25.05, 121.05], [25.06, 121.06]])
+    expect(after.length_m).toBe(400)
+    expect(after.fix).toBe(before.fix)
+    expect(after.stats).toBe(before.stats)
+    expect(after.trail).toBe(before.trail)
+  })
+})
+
 describe("applyMessage: snapshot", () => {
   it("replaces the whole model, so a reconnecting socket resyncs rather than merges", () => {
     const drifted = applyMessage(fromStatus(status), { type: "fix", fix: fix(99), stats, state: "walking" })

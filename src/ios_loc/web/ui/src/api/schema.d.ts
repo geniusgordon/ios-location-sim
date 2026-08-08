@@ -144,6 +144,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/walk/route": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Reroute Walk */
+        patch: operations["reroute_walk_api_walk_route_patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -267,6 +284,18 @@ export interface components {
             paces: components["schemas"]["PaceOut"][];
             /** Presets */
             presets: components["schemas"]["PresetOut"][];
+        };
+        /**
+         * RerouteRequest
+         * @description Newly-appended waypoints only -- the running walk's current live
+         *     position is prepended server-side by `WalkService.reroute`.
+         */
+        RerouteRequest: {
+            /** Waypoints */
+            waypoints: [
+                number,
+                number
+            ][];
         };
         /** RouteRequest */
         RouteRequest: {
@@ -707,6 +736,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WalkStatus"];
+                };
+            };
+        };
+    };
+    reroute_walk_api_walk_route_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RerouteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalkStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

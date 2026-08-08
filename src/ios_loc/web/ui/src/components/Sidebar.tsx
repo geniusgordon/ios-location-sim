@@ -49,6 +49,10 @@ export interface SidebarProps {
   routePending: boolean
   routeError: string | null
   loadError: string | null
+  /** Waypoints appended ahead of a running walk, not yet applied. */
+  pendingReroute: LatLon[]
+  onApplyReroute(): Promise<void>
+  onUndoRerouteWaypoint(): void
   paces: Pace[]
   offline: boolean
   onRemoveLast(): void
@@ -134,6 +138,9 @@ export default function Sidebar(props: SidebarProps) {
             routePending={props.routePending}
             routeError={props.routeError}
             loadError={props.loadError}
+            pendingReroute={props.pendingReroute}
+            onApplyReroute={props.onApplyReroute}
+            onUndoRerouteWaypoint={props.onUndoRerouteWaypoint}
             paces={props.paces}
             offline={props.offline}
             onRemoveLast={props.onRemoveLast}

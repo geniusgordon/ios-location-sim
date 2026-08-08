@@ -233,3 +233,61 @@ def test_round_trip_on_open_path_counts_as_one_lap():
     while w.distance_m < 2 * path.length_m:
         w.advance(1.0)
     assert w.laps == 1
+
+
+def test_reroute_preserves_cumulative_distance_m():
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 0.0}))
+    w = Walker(straight_path(), pace, rng=random.Random(0), scatter_m=0.0)
+    for _ in range(10):
+        w.advance(1.0)
+    before = w.distance_m
+
+    w.reroute(straight_path(0.02))
+
+    assert w.distance_m == before
+
+
+def test_reroute_continues_from_new_path_start():
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 0.0}))
+    w = Walker(straight_path(), pace, rng=random.Random(0), scatter_m=0.0)
+    for _ in range(10):
+        w.advance(1.0)
+
+    new_path = Path([(5.0, 5.0), (5.01, 5.0)])
+    w.reroute(new_path)
+
+    fix = w.advance(0.0)
+    assert (fix.lat, fix.lon) == pytest.approx(new_path.coords[0])
+
+
+def test_reroute_resets_finished_flag():
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 0.0}))
+    w = Walker(straight_path(0.0005), pace, loop=False, rng=random.Random(0), scatter_m=0.0)
+    for _ in range(200):
+        w.advance(1.0)
+    assert w.finished
+
+    w.reroute(straight_path(0.02))
+
+    assert not w.finished
+    fix = w.advance(1.0)
+    assert fix.speed_mps > 0.0
+
+
+def test_reroute_laps_count_from_rebase_on_loop():
+    pace = no_pause(Pace(**{**WALK.__dict__, "jitter": 0.0}))
+    path = straight_path(0.001)
+    w = Walker(path, pace, loop=True, rng=random.Random(0), scatter_m=0.0)
+    # Walk half the path, then reroute onto a fresh, longer path.
+    while w.distance_m < path.length_m / 2:
+        w.advance(1.0)
+    assert w.laps == 0
+
+    new_path = straight_path(0.002)
+    w.reroute(new_path)
+    assert w.laps == 0  # rebased: 0 distance travelled on the new path yet
+
+    # Walk two full lengths of the new (longer) path: one out-and-back lap.
+    while w.distance_m - w._reroute_offset_m < 2 * new_path.length_m:
+        w.advance(1.0)
+    assert w.laps == 1

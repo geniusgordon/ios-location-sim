@@ -73,6 +73,8 @@ export function applyMessage(model: WalkModel, msg: ServerMessage): WalkModel {
         // trail so the map draws only the live dot, never an orange path line.
         trail: msg.state === "pinned" ? [] : tail([...model.trail, msg.fix]),
       }
+    case "route":
+      return { ...model, route: msg.route, length_m: msg.length_m }
   }
 }
 

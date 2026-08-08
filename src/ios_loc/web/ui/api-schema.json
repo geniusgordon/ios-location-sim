@@ -299,6 +299,34 @@
         "title": "PresetsListOut",
         "type": "object"
       },
+      "RerouteRequest": {
+        "description": "Newly-appended waypoints only -- the running walk's current live\nposition is prepended server-side by `WalkService.reroute`.",
+        "properties": {
+          "waypoints": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "minItems": 1,
+            "title": "Waypoints",
+            "type": "array"
+          }
+        },
+        "required": [
+          "waypoints"
+        ],
+        "title": "RerouteRequest",
+        "type": "object"
+      },
       "RouteRequest": {
         "properties": {
           "costing": {
@@ -1015,6 +1043,44 @@
           }
         },
         "summary": "Start Walk"
+      }
+    },
+    "/api/walk/route": {
+      "patch": {
+        "operationId": "reroute_walk_api_walk_route_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RerouteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalkStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reroute Walk"
       }
     }
   }

@@ -10,6 +10,7 @@ export type PresetsList = S["PresetsListOut"]
 export type PresetIn = S["PresetIn"]
 export type RouteRequest = S["RouteRequest"]
 export type RouteResponse = S["RouteResponse"]
+export type RerouteRequest = S["RerouteRequest"]
 export type StartRequest = S["StartRequest"]
 export type WalkStatus = S["WalkStatus"]
 export type WalkStateName = S["WalkState"]
@@ -56,4 +57,12 @@ export interface FixMessage {
   state: WalkStateName
 }
 
-export type ServerMessage = SnapshotMessage | StateMessage | FixMessage
+/** A live reroute applied mid-walk (service.py:WalkService.reroute) — sent to
+ *  every connected client, not just the one that clicked Apply. */
+export interface RouteMessage {
+  type: "route"
+  route: LatLon[]
+  length_m: number
+}
+
+export type ServerMessage = SnapshotMessage | StateMessage | FixMessage | RouteMessage

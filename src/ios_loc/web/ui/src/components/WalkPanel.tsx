@@ -11,7 +11,7 @@ import {
   Undo2,
   Upload,
 } from "lucide-react"
-import type { Pace, Preset, WalkStateName } from "@/api/types"
+import type { LatLon, Pace, Preset, WalkStateName } from "@/api/types"
 import { errorText, savePreset, startWalk, stopWalk } from "@/api/client"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -115,12 +115,16 @@ function LiveWalkPanel(props: {
   onDismiss(): void
   /** Re-run the same route; null when the draft is no longer startable. */
   onRestart: (() => Promise<void>) | null
+  /** Waypoints appended ahead of the running walk, not yet applied. */
+  pendingReroute: LatLon[]
+  onApplyReroute(): Promise<void>
+  onUndoRerouteWaypoint(): void
 }) {
   const { fix, stats, state } = useWalkTelemetry()
   const meta = useWalkMeta()
   // Which footer action is in flight, so the spinner lands on the button that
   // was actually clicked rather than on both.
-  const [busy, setBusy] = useState<"stop" | "done" | "restart" | null>(null)
+  const [busy, setBusy] = useState<"stop" | "done" | "restart" | "reroute" | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
   // The device is held -> Stop. The run is over and the session is already
@@ -128,7 +132,10 @@ function LiveWalkPanel(props: {
   // instead. A disabled Stop as the panel's only control is a dead end.
   const held = canStop(state)
 
-  const run = async (which: "stop" | "done" | "restart", action: () => Promise<unknown>) => {
+  const run = async (
+    which: "stop" | "done" | "restart" | "reroute",
+    action: () => Promise<unknown>,
+  ) => {
     setBusy(which)
     setActionError(null)
     try {
@@ -197,6 +204,30 @@ function LiveWalkPanel(props: {
         ) : null}
         {actionError ? <p className="text-destructive text-xs">{actionError}</p> : null}
 
+        {held && props.pendingReroute.length > 0 ? (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Undo last reroute point"
+              disabled={busy !== null}
+              onClick={props.onUndoRerouteWaypoint}
+            >
+              <Undo2 className="size-4" />
+            </Button>
+            <Button
+              variant="secondary"
+              className="flex-1"
+              disabled={busy !== null}
+              onClick={() => run("reroute", props.onApplyReroute)}
+            >
+              {busy === "reroute" ? <Spinner className="size-4" /> : <RefreshCw className="size-4" />}{" "}
+              Apply reroute ({props.pendingReroute.length} pt
+              {props.pendingReroute.length === 1 ? "" : "s"})
+            </Button>
+          </div>
+        ) : null}
+
         {held ? (
           <Button
             variant="destructive"
@@ -243,6 +274,10 @@ export interface WalkPanelProps {
   routeError: string | null
   /** A failed /api/presets — a config problem, kept separate from routeError. */
   loadError: string | null
+  /** Waypoints appended ahead of a running walk, not yet applied. */
+  pendingReroute: LatLon[]
+  onApplyReroute(): Promise<void>
+  onUndoRerouteWaypoint(): void
   paces: Pace[]
   offline: boolean
   onRemoveLast(): void
@@ -316,6 +351,9 @@ export default function WalkPanel(props: WalkPanelProps) {
         // The draft route survives a run, so re-running it is one click. Absent
         // when there is nothing to re-run -- e.g. a walk this tab did not start.
         onRestart={canStart(props.route) ? beginWalk : null}
+        pendingReroute={props.pendingReroute}
+        onApplyReroute={props.onApplyReroute}
+        onUndoRerouteWaypoint={props.onUndoRerouteWaypoint}
       />
     )
   }

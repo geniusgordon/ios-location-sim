@@ -37,12 +37,13 @@ from ios_loc.web.models import (
     PresetIn,
     PresetOut,
     PresetsListOut,
+    RerouteRequest,
     RouteRequest,
     RouteResponse,
     StartRequest,
     WalkStatus,
 )
-from ios_loc.web.service import StartSpec, WalkAlreadyRunning, WalkService
+from ios_loc.web.service import RerouteNotRunning, StartSpec, WalkAlreadyRunning, WalkService
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +235,20 @@ def create_app(
             # telling the client (wrongly) that retrying is reasonable.
             raise
         except Exception as exc:  # device or tunnel failure at start
+            raise HTTPException(status_code=503, detail=f"{type(exc).__name__}: {exc}") from exc
+
+    @app.patch("/api/walk/route", response_model=WalkStatus)
+    async def reroute_walk(body: RerouteRequest) -> WalkStatus:
+        try:
+            return await service.reroute(body.waypoints)
+        except RerouteNotRunning as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (RoutingError, ValueError) as exc:
+            logger.warning("reroute failed: %s", exc)
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except _PROGRAMMING_ERRORS:
+            raise
+        except Exception as exc:  # device or tunnel failure mid-reroute
             raise HTTPException(status_code=503, detail=f"{type(exc).__name__}: {exc}") from exc
 
     @app.post("/api/pin", response_model=WalkStatus)

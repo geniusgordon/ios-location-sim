@@ -4,6 +4,7 @@ import {
   deletePlace,
   deletePreset,
   getPresets,
+  patchReroute,
   postRoute,
   savePlace,
   setFetch,
@@ -54,6 +55,15 @@ describe("request shaping", () => {
     await stopWalk()
     expect((f.mock.calls[0] as unknown[])[0]).toBe("/api/walk")
     expect(((f.mock.calls[0] as unknown[])[1] as RequestInit).method).toBe("DELETE")
+  })
+
+  it("PATCHes /api/walk/route with the appended waypoints", async () => {
+    const f = stub(200, { state: "walking", route: [], trail: [], loop: false })
+    await patchReroute([[25.05, 121.05]])
+    expect((f.mock.calls[0] as unknown[])[0]).toBe("/api/walk/route")
+    const init = (f.mock.calls[0] as unknown[])[1] as RequestInit
+    expect(init.method).toBe("PATCH")
+    expect(JSON.parse(init.body as string)).toEqual({ waypoints: [[25.05, 121.05]] })
   })
 })
 

@@ -67,6 +67,7 @@ class Walker:
         self.laps = 0
         self.finished = False
         self._pause_remaining_s = 0.0
+        self._reroute_offset_m = 0.0
 
     def advance(self, dt: float) -> Fix:
         """Advance the simulation by `dt` seconds and return the position to emit."""
@@ -86,6 +87,26 @@ class Walker:
             speed_mps=speed,
             paused=self._pause_remaining_s > 0.0,
         )
+
+    def reroute(self, new_path: Path) -> None:
+        """Swap in a newly-computed path starting at the walker's current
+        live position, without disturbing the cumulative `distance_m`
+        counter (still the total ever walked, still never wrapped/reset).
+
+        Path-relative position (`_position_distance`/`_apply_bounds`) is
+        rebased to start at 0 on `new_path` by recording the current
+        `distance_m` as the new offset, so the very next `advance()` emits
+        `new_path.coords[0]` -- continuous with the live fix `new_path` was
+        built from, no jump.
+
+        Synchronous and non-awaiting, like `advance()` -- safe to call
+        between ticks from the same event-loop task that owns the walker.
+        Neither method ever yields to the loop, so the two can never
+        interleave; calling this from a second task/thread would race.
+        """
+        self.path = new_path
+        self._reroute_offset_m = self.distance_m
+        self.finished = False
 
     # -- internals -------------------------------------------------------
 
@@ -129,17 +150,22 @@ class Walker:
 
     def _apply_bounds(self) -> None:
         length = self.path.length_m
+        # `distance_m - _reroute_offset_m` is how far the walker has moved
+        # along the *current* path -- `_reroute_offset_m` is 0 until a
+        # `reroute()` rebases it, so this is just `distance_m` for a walk
+        # that was never rerouted.
+        travelled = self.distance_m - self._reroute_offset_m
         if self.loop:
             # `distance_m` is the total distance travelled and is never wrapped
             # or reset — that is what lets a long walk keep accumulating past
             # any number of laps. Only the derived position (see
             # `_position_distance`) folds it back onto the path.
-            lengths = self.distance_m / length
+            lengths = travelled / length
             # On a bouncing open route a lap is a full out-and-back, i.e. two path
             # lengths; on a closed route one length is one lap.
             self.laps = int(lengths) if self.path.is_closed_loop else int(lengths / 2)
-        elif self.distance_m >= length:
-            self.distance_m = length
+        elif travelled >= length:
+            self.distance_m = self._reroute_offset_m + length
             self.finished = True
 
     def _position_distance(self) -> float:
@@ -151,11 +177,12 @@ class Walker:
         straight back to the start.
         """
         length = self.path.length_m
+        travelled = self.distance_m - self._reroute_offset_m
         if not self.loop:
-            return self.distance_m
+            return travelled
         if self.path.is_closed_loop:
-            return self.distance_m % length
-        cycle = self.distance_m % (2 * length)
+            return travelled % length
+        cycle = travelled % (2 * length)
         return cycle if cycle <= length else 2 * length - cycle
 
     def _emit_position(self) -> Coord:

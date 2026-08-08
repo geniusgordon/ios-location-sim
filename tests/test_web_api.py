@@ -139,6 +139,57 @@ def test_starting_a_second_walk_is_a_409(context):
     client.delete("/api/walk")
 
 
+def test_rerouting_a_running_walk_updates_the_route(context):
+    client, *_ = context
+    with client.websocket_connect("/ws") as socket:
+        assert socket.receive_json()["type"] == "snapshot"
+        client.post("/api/walk", json={"waypoints": [[25.0, 121.0], [25.1, 121.1]]})
+        msg = socket.receive_json()
+        while msg["type"] != "fix":
+            msg = socket.receive_json()
+
+    response = client.patch("/api/walk/route", json={"waypoints": [[25.05, 121.05]]})
+    assert response.status_code == 200
+    assert response.json()["route"] == [[lat, lon] for lat, lon in SQUARE]
+    client.delete("/api/walk")
+
+
+def test_rerouting_an_idle_walk_is_a_409(context):
+    client, *_ = context
+    response = client.patch("/api/walk/route", json={"waypoints": [[25.05, 121.05]]})
+    assert response.status_code == 409
+
+
+def test_rerouting_a_looping_walk_is_a_409(context):
+    client, *_ = context
+    with client.websocket_connect("/ws") as socket:
+        assert socket.receive_json()["type"] == "snapshot"
+        client.post("/api/walk", json={"waypoints": [[25.0, 121.0], [25.1, 121.1]], "loop": True})
+        msg = socket.receive_json()
+        while msg["type"] != "fix":
+            msg = socket.receive_json()
+
+    response = client.patch("/api/walk/route", json={"waypoints": [[25.05, 121.05]]})
+    assert response.status_code == 409
+    client.delete("/api/walk")
+
+
+def test_rerouting_with_a_routing_failure_is_a_502(context):
+    client, _, route_client, _ = context
+    with client.websocket_connect("/ws") as socket:
+        assert socket.receive_json()["type"] == "snapshot"
+        client.post("/api/walk", json={"waypoints": [[25.0, 121.0], [25.1, 121.1]]})
+        msg = socket.receive_json()
+        while msg["type"] != "fix":
+            msg = socket.receive_json()
+
+    route_client.error = RoutingError("valhalla said no")
+    response = client.patch("/api/walk/route", json={"waypoints": [[25.05, 121.05]]})
+    assert response.status_code == 502
+    assert "valhalla said no" in response.json()["detail"]
+    client.delete("/api/walk")
+
+
 def test_starting_with_both_preset_and_waypoints_is_a_400(context):
     client, *_ = context
     response = client.post(

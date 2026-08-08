@@ -1,5 +1,6 @@
 import type {
   DeviceStatus,
+  LatLon,
   PinRequest,
   Place,
   PlaceIn,
@@ -7,6 +8,7 @@ import type {
   PresetIn,
   Preset,
   PresetsList,
+  RerouteRequest,
   RouteRequest,
   RouteResponse,
   StartRequest,
@@ -132,6 +134,11 @@ export function stopWalk(signal?: AbortSignal): Promise<WalkStatus> {
 
 export function getDeviceStatus(signal?: AbortSignal): Promise<DeviceStatus> {
   return request<DeviceStatus>("/api/device", { method: "GET", signal })
+}
+
+export function patchReroute(waypoints: LatLon[], signal?: AbortSignal): Promise<WalkStatus> {
+  const body: RerouteRequest = { waypoints }
+  return request<WalkStatus>("/api/walk/route", json("PATCH", body, signal))
 }
 
 export function pinLocation(

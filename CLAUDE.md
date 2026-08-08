@@ -193,6 +193,27 @@ These were each fixed deliberately; re-breaking them is silent, not loud.
   touch a hand-written `[paces.*]` or its comments. `load_config` reads only
   `paces` and `presets` and ignores unknown top-level tables, which is what
   lets `[places.*]` coexist without a loader change.
+- **A natural finish sticks; only an error clears.** `_drive`'s `finally`
+  calls `_teardown(run, clear=self._state is WalkState.ERROR)` — a walk that
+  reaches the end of its route leaves the device holding that last simulated
+  fix, with no session left open, until a new walk or pin overwrites it.
+  There is deliberately no "revert to real GPS" affordance for an idle device
+  after a natural finish. An errored walk (lost device, exception) still
+  clears, since a stuck fake position on top of an unclean state isn't a
+  guarantee worth making. `stop()`'s own `_teardown(run)` call (Done, or an
+  explicit Stop mid-walk) keeps the `clear=True` default throughout.
+- **A live reroute is synchronous, so it can never race the tick loop.**
+  `Walker.reroute(new_path)` and `run_walk`'s `advance()` never `await`
+  anything, so calling `WalkService.reroute()` — itself lock-guarded like
+  `start()`/`stop()` — from the same event loop can only run wholly before or
+  wholly after a given tick, never interleaved with one. `reroute()` rebases
+  path-relative position via `_reroute_offset_m` (set to the current
+  `distance_m` at reroute time) rather than resetting `distance_m` itself,
+  so the cumulative counter — the number reported to the user — never jumps.
+  Reroute always plans `[current_fix, *appended_waypoints]` only, discarding
+  whatever remained of the original route (append-only, no waypoint
+  projection), and refuses a looping walk (`loop=True`) outright, since a
+  route computed from an arbitrary live position is never a closed course.
 
 ## Config
 

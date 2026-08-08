@@ -40,6 +40,7 @@ class FakeSession:
         self.started = False
         self.stopped = False
         self.cleared = None
+        self.stop_clear_calls = []
         self.stop_calls = 0
         self.start_calls = 0
         self._fail_with = fail_with
@@ -71,6 +72,7 @@ class FakeSession:
         self.stop_calls += 1
         self.stopped = True
         self.cleared = clear
+        self.stop_clear_calls.append(clear)
 
     async def set(self, lat, lon, deadline=None):
         self.sets.append((lat, lon))

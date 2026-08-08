@@ -156,6 +156,13 @@ class StartRequest(BaseModel):
     scatter_m: float = Field(default=3.0, ge=0, le=100)
 
 
+class RerouteRequest(BaseModel):
+    """Newly-appended waypoints only -- the running walk's current live
+    position is prepended server-side by `WalkService.reroute`."""
+
+    waypoints: list[Coord] = Field(min_length=1)
+
+
 class PinRequest(BaseModel):
     """A single point to hold the device at — the GUI's `ios-loc set`."""
 

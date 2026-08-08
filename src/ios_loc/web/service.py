@@ -25,6 +25,10 @@ class WalkAlreadyRunning(RuntimeError):
     """A run is already in progress; the device accepts only one."""
 
 
+class RerouteNotRunning(RuntimeError):
+    """A reroute needs a live walk with at least one fix to rebase from."""
+
+
 @dataclass
 class StartSpec:
     waypoints: list[Coord]
@@ -235,6 +239,44 @@ class WalkService:
             self._broadcast({"type": "state", "state": self._state.value, "error": None})
             return self.status()
 
+    async def reroute(self, waypoints: list[Coord]) -> WalkStatus:
+        """Extend the running walk ahead of its current live position.
+
+        `waypoints` are only the newly-appended points -- this always routes
+        `[current_fix, *waypoints]`, discarding whatever remained of the
+        original plan (if the user wants the old destination too, they
+        re-click it). A looping walk is refused: a route computed from an
+        arbitrary live position is never a closed course, so "keep looping"
+        has no sane meaning once rerouted.
+
+        `Walker.reroute()` is synchronous and never awaits, so calling it
+        here — on the same event-loop task, between two `run_walk` ticks —
+        can never race the tick loop's own `advance()` calls.
+        """
+        async with self._lock:
+            run = self._run
+            if run is None or run.task is None or run.task.done():
+                raise RerouteNotRunning("no walk is currently running")
+            if run.spec.loop:
+                raise RerouteNotRunning("cannot reroute a looping walk")
+            fix = run.latest_fix
+            if fix is None:
+                raise RerouteNotRunning("the walk has not produced a fix yet")
+            current = (fix.lat, fix.lon)
+            new_path = await asyncio.to_thread(
+                self._route_client.route, [current, *waypoints], run.spec.costing
+            )
+            run.walker.reroute(new_path)
+            run.path = new_path
+            self._broadcast(
+                {
+                    "type": "route",
+                    "route": [[lat, lon] for lat, lon in new_path.coords],
+                    "length_m": new_path.length_m,
+                }
+            )
+            return self.status()
+
     async def pin(self, lat: float, lon: float) -> WalkStatus:
         """Hold the device at a fixed point — the GUI equivalent of `ios-loc set`.
 
@@ -394,7 +436,12 @@ class WalkService:
             if run.watchdog is not None:
                 run.watchdog.cancel()
             if self._state in (WalkState.FINISHED, WalkState.ERROR):
-                await self._teardown(run)
+                # A natural finish sticks: the device keeps the last simulated
+                # fix instead of snapping back to real GPS. An error still
+                # clears, since something went wrong and a stuck fake
+                # position on top of an unclean state isn't a guarantee worth
+                # making.
+                await self._teardown(run, clear=self._state is WalkState.ERROR)
                 # Carry the authoritative final stats alongside the terminal
                 # state so a WebSocket-only consumer learns the real numbers
                 # without having to re-`GET /api/walk`.
@@ -455,15 +502,22 @@ class WalkService:
         except asyncio.CancelledError:
             raise
 
-    async def _teardown(self, run: _Run) -> None:
-        """Stop the session and clear the device -- exactly once, on success.
+    async def _teardown(self, run: _Run, *, clear: bool = True) -> None:
+        """Stop the session -- exactly once, on success -- optionally clearing
+        the device's simulated location.
+
+        `clear=False` closes the tunnel/session as normal but leaves the last
+        simulated fix in place on the device: this is how a naturally
+        finished walk "sticks" instead of snapping back to real GPS. Every
+        other caller (explicit Stop, an errored walk, a pin teardown) keeps
+        the default `clear=True`.
 
         The flag is set only *after* `session.stop()` returns, not before the
         await. If this call is cancelled while suspended inside that await
         (e.g. a concurrent stop() cancelling the drive task mid-teardown),
         CancelledError propagates -- deliberately uncaught here -- and
         `torn_down` stays False, so whoever calls `_teardown` next actually
-        retries the clear instead of finding a no-op. A regular (non-cancel)
+        retries the stop instead of finding a no-op. A regular (non-cancel)
         failure is logged and still counts as "done": retrying it here would
         not fix a real device/tunnel failure, and that path already has its
         own reconnect logic in session.py.
@@ -471,7 +525,7 @@ class WalkService:
         if run.torn_down:
             return
         try:
-            await run.session.stop(clear=True)
+            await run.session.stop(clear=clear)
         except Exception as exc:  # noqa: BLE001 — teardown must not mask the result
             logger.warning("could not stop the session cleanly: %s", exc)
         run.torn_down = True
