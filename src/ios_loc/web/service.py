@@ -236,6 +236,13 @@ class WalkService:
                     logger.exception("walk start failed")
                 self._broadcast({"type": "state", "state": self._state.value, "error": self._error})
                 raise
+            self._broadcast(
+                {
+                    "type": "route",
+                    "route": [[lat, lon] for lat, lon in run.path.coords],
+                    "length_m": run.path.length_m,
+                }
+            )
             self._broadcast({"type": "state", "state": self._state.value, "error": None})
             return self.status()
 
