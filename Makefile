@@ -5,6 +5,7 @@
 # here instead of restating the command list, so they cannot drift from it.
 
 UI := src/ios_loc/web/ui
+HOST ?= 127.0.0.1
 
 .DEFAULT_GOAL := help
 .PHONY: help install check test test-py test-ui lint lint-py lint-ui fmt \
@@ -55,8 +56,8 @@ types:  ## Regenerate src/api/schema.d.ts from api-schema.json
 # `ios-loc gui` serves the built bundle, never the source, so build first.
 # Vite is fast and a no-op when nothing changed; this is what keeps you from
 # debugging a UI change that was never built.
-gui: build-ui  ## Serve the GUI from a freshly built bundle
-	uv run ios-loc gui
+gui: build-ui  ## Serve the GUI from a freshly built bundle (HOST=0.0.0.0 make gui to expose it)
+	uv run ios-loc gui --host $(HOST)
 
 dev:  ## Vite on 5173 (proxying to uvicorn) + the API on 8765, together
 	uv run ios-loc gui & \
