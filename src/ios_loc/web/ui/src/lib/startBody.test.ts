@@ -48,7 +48,7 @@ describe("startBody", () => {
   })
 
   it("sends null, not zero, for an unset pace and a blank duration", () => {
-    const body = startBody(TWO, defaultSettings)
+    const body = startBody(TWO, { ...defaultSettings, pace: null })
     expect(body.pace).toBeNull()
     expect(body.duration_s).toBeNull()
     expect(body.speed).toBeNull()

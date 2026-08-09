@@ -37,7 +37,7 @@ export interface DraftSettings {
 export const emptyRoute: DraftRoute = { waypoints: [], name: null, literal: false }
 
 export const defaultSettings: DraftSettings = {
-  pace: null,
+  pace: "bike",
   costing: "pedestrian",
   loop: false,
   durationMin: "",
