@@ -199,7 +199,16 @@ export default function MapView(props: MapViewProps) {
     window.addEventListener("mouseup", endDrag)
     window.addEventListener("blur", endDrag)
 
+    // The container's CSS box changes size whenever the sidebar opens,
+    // collapses, or switches between inline and overlay -- none of which
+    // fire a window "resize" event. Without this, MapLibre keeps rendering
+    // into its last-known canvas size and the rest of the container is left
+    // blank.
+    const observer = new ResizeObserver(() => m.resize())
+    observer.observe(container.current)
+
     return () => {
+      observer.disconnect()
       window.removeEventListener("mouseup", endDrag)
       window.removeEventListener("blur", endDrag)
       m.remove()
