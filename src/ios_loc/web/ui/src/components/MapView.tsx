@@ -74,6 +74,8 @@ export default function MapView(props: MapViewProps) {
   const [ready, setReady] = useState(false)
   const follow = useRef(initialFollow)
   const meta = useWalkMeta()
+  const browserLocation = useRef<LatLon | null>(null)
+  const [geoError, setGeoError] = useState<string | null>(null)
 
   // Latest props for the map's own event handlers, which are registered once
   // and would otherwise capture the first render's closures forever.
@@ -93,21 +95,50 @@ export default function MapView(props: MapViewProps) {
     map.current = m
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right")
 
-    // Best-effort: recenter on the browser's location once, unless something
-    // else (a draft route, waypoints, or a picked point) already claimed the
-    // camera first. Denial or timeout just leaves the Taipei fallback in place.
-    navigator.geolocation?.getCurrentPosition(
-      (position) => {
-        const { draftRoute, draftWaypoints, pickedPoint, centerOn } = handlers.current
-        if (draftRoute.length || draftWaypoints.length || pickedPoint || centerOn) return
-        m.jumpTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 14 })
-      },
-      () => {},
-      { timeout: 5000 },
-    )
+    let cancelled = false
+    let jumpedToBrowserLocation = false
+    let watchId: number | null = null
+    if (navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          if (cancelled) return
+          const point: LatLon = [position.coords.latitude, position.coords.longitude]
+          browserLocation.current = point
+          setGeoError(null)
+          const source = m.getSource("browser-location") as maplibregl.GeoJSONSource | undefined
+          source?.setData(pointsOf([point]))
+
+          // Best-effort: recenter on the browser's location once, unless
+          // something else (a draft route, waypoints, or a picked point)
+          // already claimed the camera first.
+          if (!jumpedToBrowserLocation) {
+            jumpedToBrowserLocation = true
+            const { draftRoute, draftWaypoints, pickedPoint, centerOn } = handlers.current
+            if (!draftRoute.length && !draftWaypoints.length && !pickedPoint && !centerOn) {
+              m.jumpTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 14 })
+            }
+          }
+        },
+        (error) => {
+          if (cancelled) return
+          setGeoError(error.message || "Location unavailable")
+        },
+        { timeout: 5000 },
+      )
+    } else {
+      setGeoError("Geolocation is not available in this browser")
+    }
 
     m.on("load", () => {
-      for (const id of ["route", "draft-route", "trail", "waypoints", "live", "pick"]) {
+      for (const id of [
+        "route",
+        "draft-route",
+        "trail",
+        "waypoints",
+        "browser-location",
+        "live",
+        "pick",
+      ]) {
         m.addSource(id, { type: "geojson", data: EMPTY })
       }
       m.addLayer({
@@ -137,6 +168,23 @@ export default function MapView(props: MapViewProps) {
           "circle-color": "#ffffff",
           "circle-stroke-color": "#7c3aed",
           "circle-stroke-width": 3,
+        },
+      })
+      m.addLayer({
+        id: "browser-location-halo",
+        type: "circle",
+        source: "browser-location",
+        paint: { "circle-radius": 12, "circle-color": "#0ea5e9", "circle-opacity": 0.25 },
+      })
+      m.addLayer({
+        id: "browser-location-dot",
+        type: "circle",
+        source: "browser-location",
+        paint: {
+          "circle-radius": 6,
+          "circle-color": "#0ea5e9",
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 2,
         },
       })
       m.addLayer({
@@ -221,6 +269,8 @@ export default function MapView(props: MapViewProps) {
     observer.observe(container.current)
 
     return () => {
+      cancelled = true
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId)
       observer.disconnect()
       window.removeEventListener("mouseup", endDrag)
       window.removeEventListener("blur", endDrag)
@@ -255,6 +305,15 @@ export default function MapView(props: MapViewProps) {
 
     draw() // catch up with whatever the snapshot already delivered
     return walkStore.subscribeFix(draw)
+  }, [ready])
+
+  // --- the browser-location dot: catch up once the sources exist -----------
+  useEffect(() => {
+    if (!ready) return
+    const source = map.current?.getSource("browser-location") as
+      | maplibregl.GeoJSONSource
+      | undefined
+    source?.setData(browserLocation.current ? pointsOf([browserLocation.current]) : EMPTY)
   }, [ready])
 
   // --- committed route (from the store's meta channel) ----------------------
@@ -302,15 +361,20 @@ export default function MapView(props: MapViewProps) {
         size="icon"
         className="absolute right-3 top-20 shadow-md"
         aria-label="Recenter on the live position"
+        title={geoError ?? "Recenter on the live position"}
         onClick={() => {
           follow.current = onRecenter(follow.current)
           const model = walkStore.getModel()
-          if (model.fix) {
-            map.current?.easeTo({ center: toLngLat([model.fix.lat, model.fix.lon]), duration: 400 })
-          }
+          const target = model.fix
+            ? ([model.fix.lat, model.fix.lon] as LatLon)
+            : browserLocation.current
+          if (target) map.current?.easeTo({ center: toLngLat(target), duration: 400 })
         }}
       >
         <Crosshair className="size-4" />
+        {geoError && (
+          <span className="absolute -right-1 -top-1 size-2 rounded-full bg-amber-500" />
+        )}
       </Button>
     </div>
   )
