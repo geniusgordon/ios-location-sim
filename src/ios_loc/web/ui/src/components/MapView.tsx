@@ -93,6 +93,19 @@ export default function MapView(props: MapViewProps) {
     map.current = m
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right")
 
+    // Best-effort: recenter on the browser's location once, unless something
+    // else (a draft route, waypoints, or a picked point) already claimed the
+    // camera first. Denial or timeout just leaves the Taipei fallback in place.
+    navigator.geolocation?.getCurrentPosition(
+      (position) => {
+        const { draftRoute, draftWaypoints, pickedPoint, centerOn } = handlers.current
+        if (draftRoute.length || draftWaypoints.length || pickedPoint || centerOn) return
+        m.jumpTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 14 })
+      },
+      () => {},
+      { timeout: 5000 },
+    )
+
     m.on("load", () => {
       for (const id of ["route", "draft-route", "trail", "waypoints", "live", "pick"]) {
         m.addSource(id, { type: "geojson", data: EMPTY })
