@@ -420,6 +420,12 @@ export default function WalkPanel(props: WalkPanelProps) {
   // the config failed to load and the list is empty.
   const selectedPace = props.paces.find((p) => p.name === (props.settings.pace ?? "walk")) ?? null
 
+  // Bike is the default pace, so it leads the select regardless of the
+  // otherwise-alphabetical order the API returns paces in.
+  const orderedPaces = [...props.paces].sort((a, b) =>
+    a.name === "bike" ? -1 : b.name === "bike" ? 1 : 0,
+  )
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-col gap-4 border-b p-4">
@@ -517,7 +523,7 @@ export default function WalkPanel(props: WalkPanelProps) {
               <SelectValue placeholder="walk" />
             </SelectTrigger>
             <SelectContent>
-              {props.paces.map((p) => (
+              {orderedPaces.map((p) => (
                 <SelectItem key={p.name} value={p.name}>
                   <span className="flex w-full items-baseline justify-between gap-3">
                     <span>{p.name}</span>
