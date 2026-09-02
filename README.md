@@ -46,7 +46,7 @@ generated output and is deliberately not committed:
 
 ```bash
 make build               # pnpm install + pnpm build, into web/static/
-uv run ios-loc gui       # http://127.0.0.1:8765
+uv run ios-loc gui       # http://127.0.0.1:9876
 ```
 
 Rebuild after pulling changes that touch `src/ios_loc/web/ui/`, or just use
@@ -125,7 +125,7 @@ with no Valhalla call, so `--costing` has no effect on a GPX walk.
 ## Map GUI
 
 ```bash
-uv run ios-loc gui               # serves 127.0.0.1:8765 and opens a browser
+uv run ios-loc gui               # serves 127.0.0.1:9876 and opens a browser
 uv run ios-loc gui --no-open --port 9000
 uv run ios-loc gui --offline     # disables routing; saved presets still work
 uv run ios-loc gui --config ./my.toml   # alternate config file
@@ -197,7 +197,7 @@ every target.
 make check        # the full gate: ruff + pytest + vitest + oxlint + a real build
 make test         # both test suites (Python ~2s, neither needs a device or network)
 make lint         # ruff + oxlint          make fmt applies ruff's formatting
-make dev          # vite on 5173 (proxying to the API on 8765), both at once
+make dev          # vite on 5173 (proxying to the API on 9876), both at once
 make gui          # rebuild the bundle, then serve it
 make schema       # regenerate the OpenAPI schema the frontend types from
 make types        # regenerate the frontend's types from that schema

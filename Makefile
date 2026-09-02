@@ -59,7 +59,7 @@ types:  ## Regenerate src/api/schema.d.ts from api-schema.json
 gui: build-ui  ## Serve the GUI from a freshly built bundle (HOST=0.0.0.0 make gui to expose it)
 	uv run ios-loc gui --host $(HOST)
 
-dev:  ## Vite on 5173 (proxying to uvicorn) + the API on 8765, together
+dev:  ## Vite on 5173 (proxying to uvicorn) + the API on 9876, together
 	uv run ios-loc gui & \
 	cd $(UI) && pnpm dev; \
 	kill %1 2>/dev/null || true

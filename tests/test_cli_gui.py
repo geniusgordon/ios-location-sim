@@ -127,9 +127,9 @@ def test_gui_command_opens_browser_by_default(monkeypatch, tmp_path, built_asset
     monkeypatch.setattr(cli.uvicorn, "run", fake_run)
     monkeypatch.setattr(cli.webbrowser, "open", lambda url: calls.setdefault("opened", url))
 
-    result = runner.invoke(cli.app, ["gui", "--port", "8765", "--config", str(tmp_path / "c.toml")])
+    result = runner.invoke(cli.app, ["gui", "--port", "9876", "--config", str(tmp_path / "c.toml")])
     assert result.exit_code == 0, result.output
-    assert calls["opened"] == "http://127.0.0.1:8765"
+    assert calls["opened"] == "http://127.0.0.1:9876"
 
 
 def test_build_gui_app_handles_missing_static_dir(tmp_path):

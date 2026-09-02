@@ -410,7 +410,7 @@ def gui(
     host: str = typer.Option(
         "127.0.0.1", help="Bind address. Leave as loopback unless you mean it."
     ),
-    port: int = typer.Option(8765, help="Port to serve on."),
+    port: int = typer.Option(9876, help="Port to serve on."),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open a browser on start."),
     offline: bool = typer.Option(False, "--offline", help="Fail routing that is not cached."),
     valhalla_url: str = typer.Option(

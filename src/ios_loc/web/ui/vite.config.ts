@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 
 // The Python package serves ../static, so that is where the build lands.
-// In dev, /api and /ws proxy to `uv run ios-loc gui` on 8765.
+// In dev, /api and /ws proxy to `uv run ios-loc gui` on 9876.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -16,8 +16,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": "http://127.0.0.1:8765",
-      "/ws": { target: "ws://127.0.0.1:8765", ws: true },
+      "/api": "http://127.0.0.1:9876",
+      "/ws": { target: "ws://127.0.0.1:9876", ws: true },
     },
   },
 })
